@@ -72,7 +72,7 @@ AJUDA = (
     "Eu sei abrir sites e programas, pesquisar no Google e no YouTube, tocar músicas, "
     "dizer as horas e a data, controlar o volume e mostrar o status do sistema. "
     "Com o Claude, eu crio apps e sites para o senhor e respondo qualquer pergunta. "
-    "Também junto até 100 arquivos em um PDF: diga, por exemplo, gera o PDF do projeto. "
+    "Também junto até 100 arquivos em um PDF e baixo vídeos e músicas do YouTube. "
     "É só dizer, por exemplo: Jarvis, cria um site de portfólio."
 )
 
@@ -171,6 +171,18 @@ def executar(comando):
     resposta_usuario = comandos_usuario.tentar(t)
     if resposta_usuario is not None:
         return resposta_usuario
+
+    # ----- YouTube: baixar vídeo ou música (antes dos links, senão o link iria para a biblioteca) -----
+    link_youtube = re.search(r"https?://(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)/[^\s<>\"]+", comando)
+    if tem(r"baix\w*", r"download\w*") and (link_youtube or tem("video", "videos", "youtube", "musica", "audio", "mp3", "clipe")):
+        audio = tem("musica", "audio", "mp3")
+        if link_youtube:
+            alvo = link_youtube.group().rstrip(".,;)!?")
+        else:
+            alvo = busca_de(t, r"baix\w*", r"download\w*", r"(?:pra|para) mim", "do youtube", "no youtube", "youtube",
+                            "em mp3", "mp3", "em mp4", "o video", "um video", "video", "a musica", "uma musica", "musica",
+                            "o audio", "audio", "o clipe", "clipe", "pode", "por favor")
+        return {"acao": "youtube_baixar", "alvo": alvo, "audio": audio}
 
     # ----- modo tela: o Jarvis vê a tela e age nela (clicar, digitar, rolar) -----
     gatilho_tela = re.search(

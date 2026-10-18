@@ -381,6 +381,8 @@ class Jarvis:
             return f"Vou juntar {min(len(arquivos), conversor_pdf.LIMITE_ARQUIVOS)} arquivos da biblioteca em um PDF, senhor."
         if acao == "pdf_escolher":
             return self._escolher_para_pdf()
+        if acao == "youtube_baixar":
+            return self._baixar_youtube(pedido["alvo"], pedido["audio"])
 
         if acao == "config_email":
             enviar_email.preparar()
@@ -457,6 +459,38 @@ class Jarvis:
             return
         narrado["quando"], narrado["ultimo"] = agora, frase
         self._falar(frase, lembrar=False)
+
+    def _baixar_youtube(self, alvo, audio):
+        """Baixa do YouTube em segundo plano e mostra o arquivo selecionado na pasta quando terminar."""
+        if not alvo:
+            return "Qual vídeo, senhor? Diga o nome ou cole o link."
+        tipo = "a música" if audio else "o vídeo"
+
+        def tarefa():
+            import youtube
+            self._ui("tarefa", "Baixando do YouTube", alvo)
+            ultimo = {"p": -10}
+
+            def progresso(p):
+                if p >= ultimo["p"] + 10:  # avisa de 10 em 10 por cento
+                    ultimo["p"] = p
+                    self._ui("atividade", f"Baixando… {p}%")
+
+            try:
+                arquivo, titulo = youtube.baixar(alvo, audio, progresso)
+                self._ui("nota", arquivo)
+                subprocess.Popen(["explorer", "/select,", arquivo])
+                fala = f"Pronto, senhor. Baixei {tipo} {titulo}. Está na pasta Vídeos, Jarvis."
+            except Exception as erro:
+                log.exception("Falha ao baixar do YouTube: %s", alvo)
+                fala = f"Não consegui baixar {tipo}, senhor. {str(erro).replace('ERROR: ', '')[:160]}"
+            self._ui("tarefa", None, None)
+            with self._trava:
+                self._falar(fala)
+                self._estado_parado()
+
+        threading.Thread(target=tarefa, daemon=True).start()
+        return f"Baixando {tipo} {alvo if not alvo.startswith('http') else 'do link'}, senhor. Aviso quando terminar."
 
     def _modo_tela(self, tarefa):
         """O Jarvis vê a tela e age nela, passo a passo, falando o que faz."""
