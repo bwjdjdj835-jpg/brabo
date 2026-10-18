@@ -1,0 +1,17 @@
+# Backup local das melhorias do Jarvis (git). Fica de fora: dados pessoais, senhas, arquivos grandes e projetos.
+.venv/
+__pycache__/
+*.vhdx
+*.log
+Logs/
+memoria.json
+email_config.json
+biblioteca/arquivos/
+biblioteca/indice.json
+biblioteca/meus_dados.md
+pdfs/
+videos/
+projetos/*
+!projetos/CLAUDE.md
+.env
+telegram_ids.json

@@ -1,0 +1,26 @@
+{
+  "_ajuda": [
+    "Crie seus comandos aqui. Salve o arquivo e fale o comando: o Jarvis lê de novo sem precisar reiniciar.",
+    "Cada comando tem: 'frases' (o que você fala; basta conter as palavras) e 'acao'.",
+    "Tipos de acao:",
+    "  {\"tipo\": \"responder\", \"texto\": \"...\"}            -> ele fala esse texto",
+    "  {\"tipo\": \"abrir\", \"alvo\": \"https://...\"}          -> abre um site ou arquivo",
+    "  {\"tipo\": \"programa\", \"caminho\": \"notepad\", \"args\": []} -> abre um programa (sem comando de terminal)",
+    "  {\"tipo\": \"pasta\", \"caminho\": \"C:\\\\Users\\\\bwjdj\\\\Documents\"} -> abre uma pasta",
+    "Os exemplos abaixo podem ser apagados ou trocados. A linha que começa com _ é só anotação."
+  ],
+  "comandos": [
+    {
+      "frases": ["abre minha agenda"],
+      "acao": {"tipo": "abrir", "alvo": "https://calendar.google.com"}
+    },
+    {
+      "frases": ["modo estudo"],
+      "acao": {"tipo": "responder", "texto": "Modo estudo ativado, senhor. Bons estudos."}
+    },
+    {
+      "frases": ["abre minhas notas"],
+      "acao": {"tipo": "pasta", "caminho": "C:\\Users\\bwjdj\\Documents"}
+    }
+  ]
+}

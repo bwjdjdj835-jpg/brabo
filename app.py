@@ -1,0 +1,801 @@
+"""J.A.R.V.I.S. - assistente de voz para Windows."""
+import os
+
+# Deixa a interface tocar a voz sem precisar de um clique antes
+os.environ.setdefault("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--autoplay-policy=no-user-gesture-required")
+
+import asyncio
+import base64
+import datetime
+import difflib
+import json
+import logging
+import platform
+import re
+import subprocess
+import threading
+import time
+
+import edge_tts
+import psutil
+import speech_recognition as sr
+import webview
+
+import biblioteca
+import claude_code
+import conversor_pdf
+import engenharia
+import enviar_email
+import memoria
+import segredos
+import telegram_bot
+from comandos import executar, normalizar
+
+PASTA = os.path.dirname(os.path.abspath(__file__))
+DISCO = os.environ.get("SystemDrive", "C:") + "\\"
+VOZ = "pt-BR-AntonioNeural"
+
+# O reconhecimento de voz às vezes escreve "Jarvis" de outros jeitos
+VARIACOES = re.compile(r"(jarv\w*|djarv\w*|jerv\w*|javis|jarbas|jar|jorge|jarviz|chaves|charles)")
+SAIR = re.compile(r"^(pode\s+)?(se\s+)?(fecha\w*|encerr\w*|desativ\w*|sair|descansa\w*|desliga\w*)(\s+(o\s+)?jarvis)?$")
+RECALIBRAR_A_CADA = 180  # segundos
+
+log = logging.getLogger("jarvis")
+
+
+def _eh_jarvis(palavra):
+    return bool(VARIACOES.fullmatch(palavra)) or difflib.SequenceMatcher(None, palavra, "jarvis").ratio() >= 0.7
+
+
+def separar_chamado(texto):
+    """Se a frase chama o Jarvis (no começo ou no fim), devolve o comando sem o chamado. Senão, None."""
+    texto = texto.strip()
+    palavras = list(re.finditer(r"\w+", normalizar(texto)))
+    for palavra in palavras[:3]:
+        if _eh_jarvis(palavra.group()):
+            return texto[palavra.end():].strip(" ,.!?")
+    if len(palavras) > 3 and _eh_jarvis(palavras[-1].group()):
+        return texto[:palavras[-1].start()].strip(" ,.!?")
+    return None
+
+
+class Jarvis:
+    def __init__(self):
+        self._janela = None
+        self._trava = threading.Lock()
+        self._falando = threading.Event()
+        self._ouvir_agora = threading.Event()
+        self._iniciado = False
+        self._mic_ligado = True
+        self._estado = None
+        self._pendente = None      # confirmação por voz: callable -> str, à espera de "sim"/"não"
+        self._pendente_tg = None   # confirmação pelo Telegram, separada da voz
+        self._bot = None           # bot do Telegram, se ligado
+
+    # ---------- chamados pela interface ----------
+    def pronto(self):
+        if self._iniciado:
+            return
+        self._iniciado = True
+        threading.Thread(target=self._saudar_e_ouvir, daemon=True).start()
+
+    def comando_texto(self, texto):
+        threading.Thread(target=self._processar, args=(texto,), daemon=True).start()
+
+    def ouvir_agora(self):
+        """Botão de falar: o próximo comando não precisa de "Jarvis"."""
+        if self._mic_ligado and not self._falando.is_set():
+            self._ouvir_agora.set()
+            self._mudar_estado("escutando")
+
+    def fim_fala(self):
+        self._falando.clear()
+
+    def alternar_microfone(self):
+        self._mic_ligado = not self._mic_ligado
+        if self._mic_ligado:
+            threading.Thread(target=self._falar, args=("Estou ouvindo, senhor.",),
+                             kwargs={"lembrar": False}, daemon=True).start()
+        elif not self._falando.is_set():
+            self._estado_parado()
+        return self._mic_ligado
+
+    # ---------- biblioteca ----------
+    def anexar(self):
+        """Botão de anexar: abre a janela do Windows para escolher arquivos."""
+        tipo = getattr(getattr(webview, "FileDialog", None), "OPEN", None) or webview.OPEN_DIALOG
+        escolhidos = self._janela.create_file_dialog(tipo, allow_multiple=True) or []
+        for caminho in escolhidos:
+            self._guardar(lambda c=caminho: biblioteca.adicionar_arquivo(c), os.path.basename(caminho))
+        return len(escolhidos)
+
+    def receber_arquivo(self, nome, conteudo_base64):
+        """Arquivo arrastado para a janela ou imagem colada (Ctrl+V)."""
+        dados = base64.b64decode(conteudo_base64)
+        self._guardar(lambda: biblioteca.adicionar_bytes(nome, dados), nome)
+
+    def gerar_pdf(self):
+        """Botão PDF: escolher até 100 arquivos e juntar tudo em um PDF."""
+        self._ui("nota", self._escolher_para_pdf())
+
+    def _escolher_para_pdf(self):
+        tipo = getattr(getattr(webview, "FileDialog", None), "OPEN", None) or webview.OPEN_DIALOG
+        escolhidos = list(self._janela.create_file_dialog(tipo, allow_multiple=True) or [])
+        if not escolhidos:
+            return "Nenhum arquivo escolhido para o PDF."
+        aviso = ""
+        if len(escolhidos) > conversor_pdf.LIMITE_ARQUIVOS:
+            aviso = f" Peguei só os primeiros {conversor_pdf.LIMITE_ARQUIVOS} de {len(escolhidos)}."
+        self._pdf_fundo(escolhidos, "Arquivos")
+        return f"Vou juntar {min(len(escolhidos), conversor_pdf.LIMITE_ARQUIVOS)} arquivos em um PDF.{aviso}"
+
+    def _pdf_fundo(self, caminhos, titulo, base=None):
+        """Gera o PDF em segundo plano, mostra o caminho no registro e abre a pasta com ele selecionado."""
+        def tarefa():
+            self._ui("tarefa", "Gerando PDF", titulo)
+            try:
+                resultado = conversor_pdf.juntar(
+                    caminhos, titulo, base,
+                    ao_progresso=lambda n, total, nome: self._ui("atividade", f"{n}/{total} · {nome}"))
+            except Exception as erro:
+                log.exception("Falha ao gerar o PDF")
+                resultado, fala = None, f"Não consegui gerar o PDF, senhor. {erro}"
+            self._ui("tarefa", None, None)
+            if resultado:
+                self._ui("nota", resultado["arquivo"])
+                for nome, motivo in resultado["pulados"][:10]:
+                    self._ui("nota", f"Fora do PDF: {nome} ({motivo})")
+                if len(resultado["pulados"]) > 10:
+                    self._ui("nota", f"E mais {len(resultado['pulados']) - 10} fora do PDF (lista completa no sumário).")
+                subprocess.Popen(["explorer", "/select,", resultado["arquivo"]])
+                fala = (f"Pronto, senhor. Juntei {len(resultado['convertidos'])} arquivos em um PDF de "
+                        f"{resultado['paginas']} páginas. Está na pasta pdfs.")
+                if resultado["pulados"]:
+                    fala += f" {len(resultado['pulados'])} ficaram de fora, o motivo está no registro."
+            with self._trava:
+                self._falar(fala)
+                self._estado_parado()
+        threading.Thread(target=tarefa, daemon=True).start()
+
+    def lista_biblioteca(self):
+        return biblioteca.listar()[:40]
+
+    def abrir_meus_dados(self):
+        subprocess.Popen(["notepad", biblioteca.MEUS_DADOS])
+
+    def _guardar(self, adicionar, nome):
+        try:
+            adicionar()
+            self._ui("nota", f"Guardado na biblioteca: {nome}. Analisando…")
+        except Exception as erro:
+            log.exception("Falha ao guardar %s", nome)
+            self._ui("nota", f"Não consegui guardar {nome}: {erro}")
+        self._ui("biblioteca", biblioteca.listar()[:40])
+
+    def _biblioteca_pronta(self, item):
+        self._ui("biblioteca", biblioteca.listar()[:40])
+        if item["status"] == "pronto":
+            primeira_linha = item["resumo"].split("\n")[0][:160]
+            self._ui("nota", f"Analisei {item['nome']}: {primeira_linha}")
+
+    def erro_js(self, mensagem):
+        log.warning("Erro na interface: %s", mensagem)
+
+    def tela_cheia(self):
+        self._janela.toggle_fullscreen()
+
+    def status(self):
+        bateria = psutil.sensors_battery()
+        memoria_ram = psutil.virtual_memory()
+        disco = psutil.disk_usage(DISCO)
+        freq = psutil.cpu_freq()
+        return {
+            "cpu": round(psutil.cpu_percent()),
+            "ram": round(memoria_ram.percent),
+            "disco": round(disco.percent),
+            "bateria": round(bateria.percent) if bateria else None,
+            "carregando": bool(bateria and bateria.power_plugged),
+            "email": enviar_email.configurado(),
+            "claude": claude_code.disponivel(),
+            # dados completos do notebook: o Jarvis roda nele, então o desempenho é o dele
+            "detalhes": {
+                "cpu": platform.processor() or "Processador",
+                "nucleos": psutil.cpu_count(logical=True),
+                "freq_ghz": round(freq.current / 1000, 2) if freq else None,
+                "ram_total": round(memoria_ram.total / 1024**3, 1),
+                "ram_usada": round(memoria_ram.used / 1024**3, 1),
+                "disco_livre": round(disco.free / 1024**3),
+                "disco_total": round(disco.total / 1024**3),
+                "processos": len(psutil.pids()),
+                "uptime_h": round((time.time() - psutil.boot_time()) / 3600, 1),
+            },
+        }
+
+    # ---------- interface ----------
+    def _ui(self, funcao, *args):
+        if not self._janela:
+            return
+        argumentos = ", ".join(json.dumps(a) for a in args)
+        try:
+            self._janela.evaluate_js(f"window.jarvis && jarvis.{funcao}({argumentos})")
+        except Exception:
+            log.debug("Falha ao atualizar a interface", exc_info=True)
+
+    def _mudar_estado(self, estado):
+        if estado != self._estado:
+            self._estado = estado
+            self._ui("estado", estado)
+
+    def _estado_parado(self):
+        self._mudar_estado("ouvindo" if self._mic_ligado else "pausado")
+
+    # ---------- fala ----------
+    async def _sintetizar(self, texto):
+        comunicador = edge_tts.Communicate(texto, VOZ, rate="+5%", pitch="-4Hz")
+        audio = b""
+        async for parte in comunicador.stream():
+            if parte["type"] == "audio":
+                audio += parte["data"]
+        return audio
+
+    def _falar(self, texto, lembrar=True):
+        log.info("Jarvis: %s", texto)
+        if lembrar:
+            memoria.registrar_fala("Jarvis", texto)
+        self._mudar_estado("falando")
+        self._ui("falaTexto", texto)
+        try:
+            audio = asyncio.run(self._sintetizar(texto))
+        except Exception:
+            log.warning("Voz online indisponível, usando a voz do Windows", exc_info=True)
+            audio = None
+
+        self._falando.set()
+        if audio:
+            self._ui("tocarAudio", base64.b64encode(audio).decode("ascii"))
+            limite = time.time() + 90
+            while self._falando.is_set() and time.time() < limite:
+                time.sleep(0.05)
+        else:
+            _voz_windows(texto)
+        self._falando.clear()
+
+    # ---------- comandos ----------
+    def _processar(self, texto):
+        texto = (texto or "").strip()
+        if not texto:
+            return
+        with self._trava:
+            log.info("Você: %s", texto)
+            memoria.registrar_fala("Usuário", texto)
+            self._ui("voceDisse", texto)
+            # Tira o "Jarvis" da frase, mantendo os acentos do resto
+            comando = separar_chamado(texto)
+            if comando is None:
+                comando = texto.strip(" ,.!?")
+
+            if SAIR.match(normalizar(comando)):
+                self._falar("Encerrando os sistemas. Até logo, senhor.")
+                self._janela.destroy()
+                return
+
+            # Resposta a uma pergunta de sim/não (ex.: confirmar envio de e-mail)
+            if self._pendente:
+                n = normalizar(comando)
+                if re.search(r"\b(sim|confirm\w*|pode|manda|envia|isso|positivo|ok|claro)\b", n):
+                    acao, self._pendente = self._pendente, None
+                    self._mudar_estado("pensando")
+                    self._falar(acao())
+                    self._estado_parado()
+                    return
+                if re.search(r"\b(nao|cancel\w*|deixa|para|negativo|esquece)\b", n):
+                    self._pendente = None
+                    self._falar("Cancelado, senhor.")
+                    self._estado_parado()
+                    return
+                self._pendente = None  # falou outra coisa: segue o fluxo normal
+
+            self._mudar_estado("pensando")
+            try:
+                resposta = executar(comando)
+                if isinstance(resposta, dict):
+                    resposta = self._acao(resposta)
+            except Exception:
+                log.exception("Erro ao executar %r", comando)
+                resposta = "Desculpe, senhor. Algo deu errado ao executar esse comando."
+            self._falar(resposta)
+            self._estado_parado()
+
+    def responder(self, texto):
+        """Processa um comando vindo do Telegram e devolve a resposta em texto (sem falar)."""
+        texto = (texto or "").strip()
+        if not texto:
+            return "Pois não, senhor?"
+        comando = separar_chamado(texto)
+        if comando is None:
+            comando = texto.strip(" ,.!?")
+
+        # Confirmação de sim/não pendente deste canal
+        if self._pendente_tg:
+            n = normalizar(comando)
+            if re.search(r"\b(sim|confirm\w*|pode|manda|envia|isso|positivo|ok|claro)\b", n):
+                acao, self._pendente_tg = self._pendente_tg, None
+                return acao()
+            if re.search(r"\b(nao|cancel\w*|deixa|para|negativo|esquece)\b", n):
+                self._pendente_tg = None
+                return "Cancelado, senhor."
+            self._pendente_tg = None
+
+        with self._trava:
+            log.info("Telegram -> Jarvis: %s", comando)
+            memoria.registrar_fala("Usuário (Telegram)", comando)
+            try:
+                resposta = executar(comando)
+                if isinstance(resposta, dict):
+                    # isola a confirmação: se _acao pedir "confirma?", ela fica no canal do Telegram
+                    antes, self._pendente = self._pendente, None
+                    resposta = self._acao(resposta)
+                    if self._pendente:
+                        self._pendente_tg = self._pendente
+                    self._pendente = antes
+            except Exception:
+                log.exception("Erro no comando do Telegram %r", comando)
+                resposta = "Desculpe, senhor. Algo deu errado."
+        return resposta
+
+    def _acao(self, pedido):
+        """Comandos que usam o Claude Code."""
+        acao = pedido["acao"]
+        if acao == "biblioteca_link":
+            biblioteca.adicionar_link(pedido["url"])
+            self._ui("biblioteca", biblioteca.listar()[:40])
+            return "Guardei o link na biblioteca, senhor. Vou analisar e aviso no registro."
+        if acao == "biblioteca_resumo":
+            itens = biblioteca.listar()
+            if not itens:
+                return "A biblioteca ainda está vazia, senhor. Arraste arquivos e fotos para a minha janela, ou cole um link."
+            nomes = ", ".join(i["nome"] if i["tipo"] != "link" else "um link" for i in itens[:3])
+            return f"Tenho {len(itens)} itens na biblioteca. Os mais recentes são: {nomes}."
+        if acao == "abrir_meus_dados":
+            self.abrir_meus_dados()
+            return "Abrindo seus dados, senhor. Preencha do seu jeito e salve."
+        if acao == "modo_fundo":
+            return self._modo_fundo(pedido["ligar"])
+        if acao == "modo_tela":
+            return self._modo_tela(pedido["tarefa"])
+        if acao == "biblioteca_apagar":
+            return self._preparar_apagar(pedido["texto"])
+        if acao == "abrir_biblioteca":
+            os.startfile(biblioteca.ARQUIVOS)
+            return "Abrindo a pasta da biblioteca."
+
+        if acao == "pdf_jarvis":
+            self._pdf_fundo(conversor_pdf.arquivos_do_jarvis(), "Projeto Jarvis", conversor_pdf.PASTA)
+            return ("Vou juntar todo o meu código em um PDF, senhor. A senha do e-mail e as conversas ficam de fora. "
+                    "É só mandar esse PDF para o Claude.")
+        if acao == "pdf_biblioteca":
+            arquivos = [i["arquivo"] for i in biblioteca.listar() if i.get("arquivo")]
+            if not arquivos:
+                return "A biblioteca não tem arquivos para virar PDF, senhor."
+            self._pdf_fundo(arquivos[:conversor_pdf.LIMITE_ARQUIVOS], "Biblioteca")
+            return f"Vou juntar {min(len(arquivos), conversor_pdf.LIMITE_ARQUIVOS)} arquivos da biblioteca em um PDF, senhor."
+        if acao == "pdf_escolher":
+            return self._escolher_para_pdf()
+
+        if acao == "config_email":
+            enviar_email.preparar()
+            subprocess.Popen(["notepad", enviar_email.CONFIG])
+            return ("Abri a configuração de e-mail, senhor. Coloque seu endereço e a senha de app, e salve. "
+                    "Nunca me diga a senha em voz alta.")
+        if acao == "email":
+            return self._preparar_email(pedido["texto"])
+
+        if not claude_code.disponivel():
+            return "O Claude Code não está instalado neste notebook, senhor."
+
+        if acao == "perguntar":
+            self._ui("atividade", "Consultando o Claude")
+            return claude_code.perguntar(pedido["texto"])
+
+        if acao == "onde_ultimo":
+            return self._onde_esta(pedido.get("android", False))
+
+        if acao == "engenharia_site":
+            self._analisar_fundo(lambda: engenharia.analisar_site(pedido["url"]),
+                                 "Analisando o site", pedido["url"])
+            return "Vou estudar como esse site foi feito, senhor. Aviso quando o relatório estiver pronto."
+        if acao == "engenharia_apk":
+            apk = self._achar_apk(pedido.get("alvo"))
+            if not apk:
+                return ("Não achei um APK para analisar, senhor. Arraste o arquivo APK para a minha janela "
+                        "e depois diga: faz engenharia desse apk.")
+            self._analisar_fundo(lambda: engenharia.analisar_apk(apk),
+                                 "Analisando o APK", os.path.basename(apk))
+            return "Vou estudar como esse APK foi construído, senhor. Aviso quando terminar."
+
+        if acao == "abrir_ultimo":
+            pasta = claude_code.ultimo_projeto()
+            if not pasta:
+                return "Ainda não criei nenhum app, senhor."
+            _abrir_projeto(pasta)
+            return "Abrindo o último app que eu criei."
+
+        if claude_code.ocupado():
+            return "Ainda estou trabalhando no app anterior, senhor. Aviso quando terminar."
+        if acao == "criar_app" and pedido.get("tipo") == "android":
+            funcao = lambda texto, ao_evento: claude_code.criar_app(texto, ao_evento, "android")
+            titulo = "Construindo APK Android"
+            fala = ("Entendido, senhor. Vou criar o app Android com o Claude e gerar o APK. "
+                    "Isso pode levar alguns minutos, aviso quando terminar.")
+        elif acao == "criar_app":
+            funcao, titulo = claude_code.criar_app, "Construindo app"
+            fala = "Entendido, senhor. Vou construir isso com o Claude e aviso quando terminar."
+        else:
+            funcao, titulo = claude_code.editar_ultimo, "Alterando o último app"
+            fala = "Entendido, senhor. Vou fazer essa alteração e aviso quando terminar."
+        threading.Thread(target=self._trabalhar, args=(funcao, pedido["pedido"], titulo), daemon=True).start()
+        return fala
+
+    def _narrar_passo(self, texto, narrado):
+        """Enquanto o Claude trabalha, fala de vez em quando o que está fazendo, sem exagerar."""
+        agora = time.time()
+        if self._falando.is_set() or agora - narrado["quando"] < 22:
+            return
+        frase = None
+        t = normalizar(texto)
+        if "criando" in t:
+            frase = "Estou criando os arquivos, senhor."
+        elif "editando" in t:
+            frase = "Estou ajustando o código."
+        elif "executando" in t and ("gradlew" in t or "gradle" in t or "assemble" in t or "bundle" in t):
+            frase = "Agora estou compilando. Essa parte é a mais demorada."
+        elif "executando" in t and ("npm" in t or "npx" in t):
+            frase = "Instalando o que o projeto precisa."
+        elif "pesquisando" in t:
+            frase = "Estou pesquisando uma referência."
+        if not frase or frase == narrado["ultimo"]:
+            return
+        narrado["quando"], narrado["ultimo"] = agora, frase
+        self._falar(frase, lembrar=False)
+
+    def _modo_tela(self, tarefa):
+        """O Jarvis vê a tela e age nela, passo a passo, falando o que faz."""
+        if claude_code.ocupado():
+            return "Ainda estou com outra tarefa, senhor. Aguarde eu terminar."
+        if not tarefa.strip():
+            return "O que o senhor quer que eu faça na tela?"
+
+        def trabalho():
+            import agente_tela
+            self._ui("tarefa", "Controlando a tela", tarefa)
+
+            def ao_evento(fala):
+                self._ui("atividade", fala)
+
+            try:
+                deu_certo, resumo = agente_tela.executar_tarefa(tarefa, ao_evento)
+            except Exception:
+                log.exception("Falha no modo tela")
+                deu_certo, resumo = False, "Não consegui controlar a tela, senhor."
+            self._ui("tarefa", None, None)
+            with self._trava:
+                self._falar(resumo)
+                self._estado_parado()
+
+        threading.Thread(target=trabalho, daemon=True).start()
+        return ("Entendido, senhor. Vou olhar a tela e fazer isso. "
+                "Se quiser que eu pare na hora, jogue o mouse para o canto superior esquerdo.")
+
+    def _modo_fundo(self, ligar):
+        import fundo
+        hwnd = fundo.achar_janela()
+        if not hwnd:
+            return "Não encontrei minha janela, senhor."
+        if ligar:
+            if fundo.ancorar(hwnd):
+                return "Pronto, senhor. Agora sou a tela de fundo. Os ícones continuam por cima de mim."
+            return "Não consegui me fixar no fundo desta vez, senhor. Veja o registro."
+        fundo.soltar(hwnd)
+        return "Voltei a ser uma janela normal, senhor."
+
+    def _preparar_apagar(self, texto):
+        """Apaga itens da biblioteca, mas só depois de você confirmar."""
+        t = normalizar(texto)
+        if re.search(r"\d+", t) and not re.search(r"\b(tudo|todas?|todos)\b", t):
+            return ("Não sei quais itens são esses, senhor. Diga o nome deles, por exemplo: "
+                    "apaga o item logo, ou diga apagar tudo para esvaziar a biblioteca.")
+        if re.search(r"\b(tudo|todas?|todos)\b", t):
+            alvos = biblioteca.listar()
+            descricao = "todos os itens da biblioteca"
+        else:
+            termo = re.sub(r"\b(apag\w*|remov\w*|tira\w*|exclu\w*|delet\w*|da|de|do|a|o|as|os|biblioteca|bibliotecas|item|itens|arquivo|arquivos)\b", " ", t)
+            termo = " ".join(termo.split())
+            alvos = biblioteca.buscar(termo) if termo else []
+            if not alvos:
+                return "Não encontrei esse item na biblioteca, senhor. Diga o nome dele ou diga apagar tudo."
+            descricao = f"{len(alvos)} item(ns) com o nome '{termo}'"
+        ids = {i["id"] for i in alvos}
+
+        def apagar():
+            apagados = biblioteca.remover(ids)
+            self._ui("biblioteca", biblioteca.listar()[:40])
+            return f"Pronto, senhor. Apaguei {apagados} itens da biblioteca."
+
+        self._pendente = apagar
+        return f"Vou apagar {descricao}, incluindo os arquivos guardados. Confirma?"
+
+    def _preparar_email(self, texto):
+        """Monta o e-mail e pede confirmação antes de enviar. Nunca envia direto."""
+        if not enviar_email.configurado():
+            enviar_email.preparar()
+            subprocess.Popen(["notepad", enviar_email.CONFIG])
+            return ("Ainda não configurei seu e-mail, senhor. Abri o arquivo de configuração: coloque seu endereço "
+                    "e a senha de app do Gmail, salve, e depois peça de novo.")
+        destino, assunto, corpo = enviar_email.interpretar(texto)
+        if not destino:
+            return "Para quem eu envio, senhor? Diga o e-mail ou um contato salvo."
+        if not corpo:
+            return "E o que o senhor quer escrever?"
+
+        def enviar():
+            try:
+                enviar_email.enviar(destino, assunto, corpo)
+                return f"E-mail enviado para {destino}, senhor."
+            except Exception as erro:
+                log.exception("Falha ao enviar e-mail")
+                return f"Não consegui enviar, senhor. O erro foi: {erro}"
+
+        self._pendente = enviar
+        self._ui("nota", f"✉ Para: {destino}\n{corpo}")
+        return f"Vou enviar para {destino} o seguinte: {corpo}. Confirmo o envio?"
+
+    def _achar_apk(self, alvo):
+        """Acha um APK para analisar: o que o usuário descreveu, ou o mais recente da biblioteca/projetos."""
+        candidatos = [i["arquivo"] for i in biblioteca.listar()
+                      if i.get("arquivo", "").lower().endswith(".apk") and os.path.exists(i["arquivo"])]
+        for projeto in memoria.projetos():
+            candidatos += [a for a in projeto.get("arquivos", []) if a.lower().endswith(".apk")]
+        if alvo:
+            alvo = alvo.lower()
+            for caminho in candidatos:
+                if alvo in os.path.basename(caminho).lower():
+                    return caminho
+        return candidatos[0] if candidatos else None
+
+    def _analisar_fundo(self, funcao, titulo, assunto):
+        """Roda uma análise (engenharia) em segundo plano, fala o resumo e salva o relatório."""
+        def tarefa():
+            self._ui("tarefa", titulo, assunto)
+            try:
+                deu_certo, texto = funcao()
+            except Exception:
+                log.exception("Falha na análise de engenharia")
+                deu_certo, texto = False, ""
+            self._ui("tarefa", None, None)
+            if deu_certo:
+                destino = os.path.join(claude_code.PROJETOS, "analises")
+                os.makedirs(destino, exist_ok=True)
+                nome = re.sub(r"[^\w.-]+", "-", assunto)[:60] or "analise"
+                caminho = os.path.join(destino, f"engenharia-{nome}.md")
+                with open(caminho, "w", encoding="utf-8") as arquivo:
+                    arquivo.write(f"# Engenharia: {assunto}\n\n{texto}\n")
+                self._ui("nota", caminho)
+                resumo = " ".join(texto.split("\n\n")[0].split()[:60])
+                with self._trava:
+                    self._falar(f"Pronto, senhor. {resumo} O relatório completo está salvo na pasta análises.")
+                    self._estado_parado()
+            else:
+                with self._trava:
+                    self._falar(texto or "Não consegui concluir a análise, senhor. Veja o registro.")
+                    self._estado_parado()
+        threading.Thread(target=tarefa, daemon=True).start()
+
+    def _onde_esta(self, so_android):
+        """Diz onde está o último projeto (ou APK) e abre a pasta com o arquivo selecionado."""
+        lista = [p for p in memoria.projetos() if os.path.isdir(p["pasta"])]
+        if so_android:
+            lista = [p for p in lista if p["tipo"] == "android"]
+        if not lista:
+            return "Ainda não tenho nenhum projeto desse tipo na memória, senhor."
+        projeto = lista[0]
+        for caminho in projeto["arquivos"] or [projeto["pasta"]]:
+            self._ui("nota", caminho)
+        principais = [a for a in projeto["arquivos"] if a.endswith((".apk", ".aab"))] or projeto["arquivos"]
+        if principais:
+            subprocess.Popen(["explorer", "/select,", principais[-1]])
+        else:
+            os.startfile(projeto["pasta"])
+        pacotes = [os.path.basename(a) for a in principais if a.endswith((".apk", ".aab"))]
+        detalhe = f" Os arquivos são {', '.join(pacotes)}." if pacotes else ""
+        return (f"Está na pasta projetos, {projeto['nome']}, dentro de Documentos, Jarvis.{detalhe} "
+                "Abri a pasta para o senhor, e o caminho completo está no registro.")
+
+    def _trabalhar(self, funcao, pedido, titulo):
+        """Roda uma tarefa longa do Claude Code em segundo plano."""
+        self._ui("tarefa", titulo, pedido)
+        narrado = {"quando": 0.0, "ultimo": ""}
+
+        def ao_evento(texto):
+            log.info("claude: %s", texto)
+            self._ui("atividade", texto)
+            self._narrar_passo(texto, narrado)
+
+        try:
+            deu_certo, resposta, pasta = funcao(pedido, ao_evento)
+        except Exception:
+            log.exception("Falha na tarefa do Claude")
+            deu_certo, resposta, pasta = False, "", None
+        log.info("Tarefa do Claude %s: %s", "concluída" if deu_certo else "falhou", resposta)
+        self._ui("tarefa", None, None)
+        if pasta:
+            tipo = "android" if claude_code.eh_android(pasta) else "web"
+            memoria.registrar_projeto(pasta, tipo, pedido, resposta if deu_certo else "falhou: " + resposta)
+            for caminho in memoria.arquivos_gerados(pasta):
+                self._ui("nota", caminho)
+
+        with self._trava:
+            if deu_certo:
+                if pasta:
+                    _abrir_projeto(pasta)
+                final = f"Pronto, senhor. {resposta}"
+            else:
+                final = resposta or "Desculpe, senhor. O Claude não conseguiu terminar a tarefa. Os detalhes estão no registro."
+            self._falar(final)
+            self._estado_parado()
+        # avisa também pelo Telegram, se estiver ligado
+        if self._bot:
+            self._bot.avisar_todos(final)
+
+    # ---------- escuta ----------
+    def _saudar_e_ouvir(self):
+        hora = datetime.datetime.now().hour
+        if 5 <= hora < 12:
+            periodo = "Bom dia"
+        elif 12 <= hora < 18:
+            periodo = "Boa tarde"
+        else:
+            periodo = "Boa noite"
+        self._falar(f"{periodo}, senhor. Todos os sistemas estão online.", lembrar=False)
+        self._estado_parado()
+        self._ouvir()
+
+    def _ouvir(self):
+        reconhecedor = sr.Recognizer()
+        reconhecedor.pause_threshold = 0.9
+        reconhecedor.non_speaking_duration = 0.5
+        reconhecedor.dynamic_energy_threshold = True
+        while True:  # se o microfone cair, tenta abrir de novo
+            try:
+                with sr.Microphone() as fonte:
+                    reconhecedor.adjust_for_ambient_noise(fonte, duration=1.5)
+                    calibrado = time.time()
+                    log.info("Microfone pronto (sensibilidade %.0f)", reconhecedor.energy_threshold)
+                    self._estado_parado()
+                    while True:
+                        if not self._mic_ligado or self._falando.is_set() or self._trava.locked():
+                            time.sleep(0.2)
+                            continue
+                        if time.time() - calibrado > RECALIBRAR_A_CADA and not self._ouvir_agora.is_set():
+                            reconhecedor.adjust_for_ambient_noise(fonte, duration=0.5)
+                            calibrado = time.time()
+                        try:
+                            self._rodada(reconhecedor, fonte)
+                        except OSError:
+                            raise  # problema no microfone: reabre lá fora
+                        except Exception:
+                            # um erro numa frase não pode deixar o Jarvis surdo
+                            log.exception("Erro ao tratar o que foi ouvido")
+                            self._ouvir_agora.clear()
+                            time.sleep(0.5)
+            except Exception:
+                log.exception("Microfone indisponível, tentando de novo em 10 segundos")
+                self._mudar_estado("sem-microfone")
+                time.sleep(10)
+
+    def _rodada(self, reconhecedor, fonte):
+        """Escuta uma frase e decide o que fazer com ela."""
+        if not self._ouvir_agora.is_set():
+            self._estado_parado()
+        alternativas = self._escutar(reconhecedor, fonte, limite=12)
+        direto = self._ouvir_agora.is_set()
+        if not alternativas:
+            return
+        log.info("Ouvi: %s", " | ".join(alternativas[:3]))
+        self._ui("ouviu", alternativas[0])
+
+        if direto:
+            self._ouvir_agora.clear()
+            self._processar(alternativas[0])
+            return
+
+        chamado = next((a for a in alternativas if separar_chamado(a) is not None), None)
+        if not chamado:
+            return
+        if separar_chamado(chamado):
+            self._processar(chamado)
+        else:
+            # Só chamou "Jarvis": bipa e espera o comando
+            self._ouvir_agora.set()
+            self._mudar_estado("escutando")
+            self._ui("bip")
+
+    def _escutar(self, reconhecedor, fonte, limite):
+        """Escuta uma frase e devolve as possíveis transcrições, da mais provável para a menos."""
+        try:
+            audio = reconhecedor.listen(fonte, timeout=5, phrase_time_limit=limite)
+        except sr.WaitTimeoutError:
+            if self._ouvir_agora.is_set():
+                self._ouvir_agora.clear()  # apertou o botão e não falou nada
+            return []
+        if self._falando.is_set():
+            return []  # ouviu a própria voz
+        try:
+            resultado = reconhecedor.recognize_google(audio, language="pt-BR", show_all=True)
+        except sr.UnknownValueError:
+            return []  # barulho que não virou palavra
+        except sr.RequestError:
+            log.warning("Sem conexão com o reconhecimento de voz", exc_info=True)
+            self._mudar_estado("offline")
+            time.sleep(3)
+            return []
+        if not isinstance(resultado, dict):
+            return []
+        return [a["transcript"] for a in resultado.get("alternative", []) if a.get("transcript")]
+
+
+def _abrir_projeto(pasta):
+    if claude_code.eh_android(pasta):
+        studio = os.path.join(claude_code.STUDIO, "bin", "studio64.exe")
+        if os.path.exists(studio):
+            subprocess.Popen([studio, pasta])
+        apk = claude_code.apk_de(pasta)
+        # mostra o APK selecionado no explorador de arquivos
+        subprocess.Popen(["explorer", "/select,", apk] if apk else ["explorer", pasta])
+        return
+    index = os.path.join(pasta, "index.html")
+    os.startfile(index if os.path.exists(index) else pasta)
+
+
+def _voz_windows(texto):
+    """Voz de reserva, sem internet."""
+    script = (
+        "Add-Type -AssemblyName System.Speech;"
+        "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer;"
+        "$s.Speak($env:JARVIS_FALA)"
+    )
+    subprocess.run(
+        ["powershell", "-NoProfile", "-Command", script],
+        env={**os.environ, "JARVIS_FALA": texto},
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+
+
+def main():
+    logging.basicConfig(
+        filename=os.path.join(PASTA, "jarvis.log"),
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        encoding="utf-8",
+    )
+    log.info("Iniciando o Jarvis")
+    segredos.preparar()
+    jarvis = Jarvis()
+    biblioteca.ao_concluir = jarvis._biblioteca_pronta
+    biblioteca.preparar()
+    enviar_email.preparar()
+    # Bot do Telegram (só liga se houver token no .env)
+    jarvis._bot = telegram_bot.iniciar(jarvis.responder, jarvis.status)
+    janela = webview.create_window(
+        "J.A.R.V.I.S.",
+        os.path.join(PASTA, "interface", "index.html"),
+        js_api=jarvis,
+        maximized=True,
+        min_size=(900, 600),
+        background_color="#020a12",
+    )
+    jarvis._janela = janela
+    webview.start()
+
+
+if __name__ == "__main__":
+    main()
