@@ -6,7 +6,6 @@ Para desfazer um ciclo: `git log` e `git revert <commit>`.
 Regra: tudo que publica, instala, clica na tela ou apaga pede confirmação ("Confirma?") antes.
 
 ## A fazer
-- [ ] 2. Abas na interface: YouTube (tocar dentro do Jarvis), sites e projetos abrindo em abas
 - [ ] 3. Voz mais Jarvis: efeito de rádio/metálico leve, escolher voz, interromper a fala ("para")
 - [ ] 6. Publicar o último site/web app na Vercel (com confirmação; precisa `npx vercel login` uma vez)
 - [ ] 7. Instalar programas pelo winget ("instala o VLC"), com confirmação
@@ -16,5 +15,8 @@ Regra: tudo que publica, instala, clica na tela ou apaga pede confirmação ("Co
 ## Feito
 - [x] 0. PDF: juntar até 100 arquivos em um PDF (botão PDF, "gera o PDF do projeto")
 - [x] 1. YouTube: "baixa o vídeo X" / "baixa a música X em mp3" / link → Vídeos\Jarvis (youtube.py, até 1080p, limite 3h)
+- [x] 2. Abas: "toca X" toca o YouTube numa aba dentro do Jarvis ("no navegador" = jeito antigo), "abre o último app"
+  abre o site numa aba, "fecha a aba" / "fecha todas as abas". Interface agora é servida por servidor.py (só 127.0.0.1,
+  só interface/, projetos/ e pdfs/). A conferir pelo usuário: o vídeo tocando dentro da aba.
 - [x] 4+5. Ver a tela e clicar: já existia (agente_tela.py, "usa a tela e ..."; pânico = mouse no canto superior esquerdo)
 - [x] Já existiam: bot do Telegram, comandos personalizados (meus_comandos.json), segredos no .env

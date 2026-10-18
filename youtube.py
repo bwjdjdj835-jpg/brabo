@@ -29,6 +29,19 @@ def eh_link(texto):
     return bool(re.match(r"https?://(www\.|m\.|music\.)?(youtube\.com|youtu\.be)/", texto.strip()))
 
 
+def buscar(busca):
+    """Primeiro resultado da busca no YouTube, sem baixar. Devolve (id do vídeo, título)."""
+    opcoes = {"quiet": True, "no_warnings": True, "extract_flat": "in_playlist", "noplaylist": True}
+    with yt_dlp.YoutubeDL(opcoes) as ydl:
+        info = ydl.extract_info(busca if eh_link(busca) else f"ytsearch1:{busca}", download=False)
+    if info.get("entries") is not None:
+        entradas = [e for e in info["entries"] if e]
+        if not entradas:
+            raise ValueError(f"Não achei nada para '{busca}'.")
+        info = entradas[0]
+    return info["id"], info.get("title") or busca
+
+
 def baixar(alvo, audio=False, ao_progresso=None):
     """Baixa um vídeo (ou só o áudio). Devolve (caminho do arquivo, título)."""
     alvo = alvo.strip()

@@ -172,6 +172,10 @@ def executar(comando):
     if resposta_usuario is not None:
         return resposta_usuario
 
+    # ----- abas da interface -----
+    if tem("aba", "abas", "guia", "guias") and tem(r"fech\w*", r"tira\w*", r"some\w*", r"sai\w*"):
+        return {"acao": "fechar_aba", "todas": tem("todas", "tudo")}
+
     # ----- YouTube: baixar vídeo ou música (antes dos links, senão o link iria para a biblioteca) -----
     link_youtube = re.search(r"https?://(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)/[^\s<>\"]+", comando)
     if tem(r"baix\w*", r"download\w*") and (link_youtube or tem("video", "videos", "youtube", "musica", "audio", "mp3", "clipe")):
@@ -315,10 +319,14 @@ def executar(comando):
             return f"Pesquisando {busca} no YouTube."
     tocar = re.search(r"\b(?:toca|tocar|toque|coloca|bota|reproduz\w*)\s+(.+)", t)
     if tocar:
-        busca = busca_de(tocar.group(1), "no youtube", "uma musica", "musica", "um video", "video")
+        no_navegador = tem("navegador", "chrome", "edge")
+        busca = busca_de(tocar.group(1), "no youtube", "uma musica", "musica", "um video", "video",
+                         "no navegador", "no chrome", "no edge", "aqui")
         if not busca:
             _tecla(TECLA_PLAY)
             return "Feito."
+        if not no_navegador:
+            return {"acao": "youtube_tocar", "busca": busca}  # toca numa aba dentro do Jarvis
         _abrir("https://www.youtube.com/results?search_query=" + urllib.parse.quote_plus(busca))
         return f"Tocando {busca} no YouTube."
     if re.search(VERBOS_BUSCA, t):

@@ -15,6 +15,8 @@ import re
 import subprocess
 import threading
 import time
+import urllib.parse
+import webbrowser
 
 import edge_tts
 import psutil
@@ -28,6 +30,7 @@ import engenharia
 import enviar_email
 import memoria
 import segredos
+import servidor
 import telegram_bot
 from comandos import executar, normalizar
 
@@ -381,6 +384,11 @@ class Jarvis:
             return f"Vou juntar {min(len(arquivos), conversor_pdf.LIMITE_ARQUIVOS)} arquivos da biblioteca em um PDF, senhor."
         if acao == "pdf_escolher":
             return self._escolher_para_pdf()
+        if acao == "youtube_tocar":
+            return self._tocar_youtube(pedido["busca"])
+        if acao == "fechar_aba":
+            self._ui("fecharAba", pedido.get("todas", False))
+            return "Fechei, senhor." if not pedido.get("todas") else "Fechei todas as abas, senhor."
         if acao == "youtube_baixar":
             return self._baixar_youtube(pedido["alvo"], pedido["audio"])
 
@@ -419,6 +427,11 @@ class Jarvis:
             pasta = claude_code.ultimo_projeto()
             if not pasta:
                 return "Ainda não criei nenhum app, senhor."
+            index = os.path.join(pasta, "index.html")
+            url = servidor.url_de(index) if os.path.exists(index) and not claude_code.eh_android(pasta) else None
+            if url:
+                self._ui("abrirAba", os.path.basename(pasta), url, "projeto")
+                return "Abri o último app numa aba, senhor."
             _abrir_projeto(pasta)
             return "Abrindo o último app que eu criei."
 
@@ -459,6 +472,26 @@ class Jarvis:
             return
         narrado["quando"], narrado["ultimo"] = agora, frase
         self._falar(frase, lembrar=False)
+
+    def _tocar_youtube(self, busca):
+        """Toca o primeiro resultado do YouTube numa aba dentro do Jarvis (ou no navegador, se não der)."""
+        import youtube
+        try:
+            if not servidor.url_de(os.path.join(servidor.PASTA, "interface", "index.html")):
+                raise RuntimeError("interface aberta sem o servidor local")
+            id_video, titulo = youtube.buscar(busca)
+        except Exception:
+            log.warning("Não deu para tocar %r dentro do Jarvis; abrindo no navegador", busca, exc_info=True)
+            webbrowser.open("https://www.youtube.com/results?search_query=" + urllib.parse.quote_plus(busca))
+            return f"Tocando {busca} no YouTube."
+        self._ui("abrirAba", titulo, f"https://www.youtube.com/embed/{id_video}?autoplay=1&rel=0", "youtube",
+                 f"https://www.youtube.com/watch?v={id_video}")
+        return f"Tocando {titulo}."
+
+    def abrir_no_navegador(self, url):
+        """Botão ↗ da aba: abre o mesmo endereço no navegador."""
+        if str(url).startswith(("http://", "https://")):
+            webbrowser.open(url)
 
     def _baixar_youtube(self, alvo, audio):
         """Baixa do YouTube em segundo plano e mostra o arquivo selecionado na pasta quando terminar."""
@@ -819,9 +852,14 @@ def main():
     enviar_email.preparar()
     # Bot do Telegram (só liga se houver token no .env)
     jarvis._bot = telegram_bot.iniciar(jarvis.responder, jarvis.status)
+    try:
+        interface = servidor.iniciar() + "/interface/index.html"
+    except Exception:
+        log.exception("Servidor local falhou; abrindo a interface direto do arquivo (YouTube nas abas não toca)")
+        interface = os.path.join(PASTA, "interface", "index.html")
     janela = webview.create_window(
         "J.A.R.V.I.S.",
-        os.path.join(PASTA, "interface", "index.html"),
+        interface,
         js_api=jarvis,
         maximized=True,
         min_size=(900, 600),

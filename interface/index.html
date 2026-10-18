@@ -91,6 +91,27 @@
     letter-spacing: .06em; border-radius: 2px;
   }
   .reator { position: relative; flex: 1; width: 100%; min-height: 0; }
+
+  /* ---------- abas: YouTube, projetos e páginas dentro do Jarvis ---------- */
+  #abas { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
+  #abas[hidden] { display: none; }
+  #abas .aba {
+    display: flex; align-items: center; gap: 6px; height: 28px; max-width: 220px; padding: 0 6px 0 12px;
+    font-family: Rajdhani, sans-serif; font-size: 13px; font-weight: 600; letter-spacing: .04em;
+    border: 1px solid rgba(56, 225, 255, .28); background: rgba(4, 16, 28, .7); color: var(--texto);
+    border-radius: 2px; cursor: pointer; opacity: .7;
+  }
+  #abas .aba.ativa { opacity: 1; border-color: var(--cor); box-shadow: 0 0 10px rgba(56, 225, 255, .35); }
+  #abas .aba span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #abas .aba i { font-style: normal; padding: 0 5px; opacity: .6; }
+  #abas .aba i:hover { opacity: 1; color: var(--cor); }
+  #paginas { position: absolute; inset: 0; z-index: 5; display: none; }
+  #paginas.visivel { display: block; }
+  #paginas iframe {
+    position: absolute; inset: 0; width: 100%; height: 100%; border: 1px solid var(--cor); background: #000;
+    box-shadow: 0 0 24px rgba(56, 225, 255, .25); display: none;
+  }
+  #paginas iframe.ativa { display: block; }
   #orb3d { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
   #bolha {
     position: absolute; left: 50%; top: 50%; z-index: 2;
@@ -220,7 +241,9 @@
       <button data-cmd="faz engenharia do apk mais recente">Engenharia APK</button>
       <button data-cmd="gera o pdf do projeto jarvis">PDF do Jarvis</button>
     </div>
+    <div id="abas" hidden></div>
     <div class="reator">
+      <div id="paginas"></div>
       <canvas id="orb3d"></canvas>
       <div id="bolha" title="Clique (ou aperte Espaço) para falar sem dizer Jarvis">
         <div id="bolha-rotulo">J.A.R.V.I.S.</div>
@@ -620,7 +643,71 @@
         $("#tarefa-passos").innerHTML = "";
       }
     },
+    abrirAba(titulo, url, tipo, externo) { abas.abrir(titulo, url, tipo, externo); },
+    fecharAba(todas) { todas ? abas.fecharTodas() : abas.fechar(abas.ativa); },
   };
+
+  // ---------- abas: o JARVIS (esfera) e páginas abertas dentro dele ----------
+  const abas = {
+    lista: [],          // {id, titulo, url, tipo, externo, botao, quadro}
+    ativa: "jarvis",
+    MAX: 6,
+    ICONES: { youtube: "▶", projeto: "◆", pdf: "📄", site: "🌐" },
+    abrir(titulo, url, tipo = "site", externo = null) {
+      const existente = this.lista.find((a) => a.url === url);
+      if (existente) return this.mostrar(existente.id);
+      if (this.lista.length >= this.MAX) this.fechar(this.lista[0].id);
+      const id = "aba" + Date.now();
+      const quadro = document.createElement("iframe");
+      quadro.src = url;
+      quadro.allow = "autoplay; encrypted-media; fullscreen; picture-in-picture; clipboard-write";
+      quadro.allowFullscreen = true;
+      $("#paginas").append(quadro);
+      const botao = document.createElement("button");
+      botao.className = "aba";
+      botao.title = titulo;
+      const nome = document.createElement("span");
+      nome.textContent = `${this.ICONES[tipo] || "🌐"} ${titulo}`;
+      const fora = document.createElement("i");
+      fora.textContent = "↗";
+      fora.title = "Abrir no navegador";
+      fora.onclick = (e) => { e.stopPropagation(); pywebview.api.abrir_no_navegador(externo || url); };
+      const fechar = document.createElement("i");
+      fechar.textContent = "✕";
+      fechar.title = "Fechar aba";
+      fechar.onclick = (e) => { e.stopPropagation(); this.fechar(id); };
+      botao.append(nome, fora, fechar);
+      botao.onclick = () => this.mostrar(id);
+      $("#abas").append(botao);
+      this.lista.push({ id, titulo, url, tipo, externo, botao, quadro });
+      this.mostrar(id);
+    },
+    mostrar(id) {
+      this.ativa = id;
+      for (const a of this.lista) {
+        a.botao.classList.toggle("ativa", a.id === id);
+        a.quadro.classList.toggle("ativa", a.id === id);
+      }
+      this.botaoJarvis.classList.toggle("ativa", id === "jarvis");
+      $("#paginas").classList.toggle("visivel", id !== "jarvis");
+      $("#abas").hidden = !this.lista.length;
+    },
+    fechar(id) {
+      const i = this.lista.findIndex((a) => a.id === id);
+      if (i < 0) return this.mostrar("jarvis");
+      const [aba] = this.lista.splice(i, 1);
+      aba.quadro.src = "about:blank";  // para o vídeo na hora
+      aba.quadro.remove();
+      aba.botao.remove();
+      this.mostrar(this.ativa === id ? (this.lista[this.lista.length - 1]?.id || "jarvis") : this.ativa);
+    },
+    fecharTodas() { [...this.lista].forEach((a) => this.fechar(a.id)); },
+  };
+  abas.botaoJarvis = document.createElement("button");
+  abas.botaoJarvis.className = "aba ativa";
+  abas.botaoJarvis.innerHTML = "<span>◉ JARVIS</span>";
+  abas.botaoJarvis.onclick = () => abas.mostrar("jarvis");
+  $("#abas").append(abas.botaoJarvis);
 
   // ---------- painel do sistema ----------
   async function atualizarStatus() {

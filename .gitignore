@@ -15,3 +15,4 @@ projetos/*
 !projetos/CLAUDE.md
 .env
 telegram_ids.json
+.claude/
