@@ -33,7 +33,7 @@ import memoria
 import segredos
 import servidor
 import telegram_bot
-from comandos import executar, normalizar
+from comandos import executar, normalizar, tempo_falado
 
 PASTA = os.path.dirname(os.path.abspath(__file__))
 DISCO = os.environ.get("SystemDrive", "C:") + "\\"
@@ -79,6 +79,7 @@ class Jarvis:
         self._pendente = None      # confirmação por voz: callable -> str, à espera de "sim"/"não"
         self._pendente_tg = None   # confirmação pelo Telegram, separada da voz
         self._bot = None           # bot do Telegram, se ligado
+        self._lembretes = []       # lembretes, timers e avisos do modo foco agendados
 
     # ---------- chamados pela interface ----------
     def pronto(self):
@@ -267,7 +268,10 @@ class Jarvis:
             self._ui("estado", estado)
 
     def _estado_parado(self):
-        self._mudar_estado("ouvindo" if self._mic_ligado else "pausado")
+        if self._mic_ligado and self._ouvir_agora.is_set():
+            self._mudar_estado("escutando")  # esperando a resposta de uma pergunta
+        else:
+            self._mudar_estado("ouvindo" if self._mic_ligado else "pausado")
 
     # ---------- fala ----------
     async def _sintetizar(self, texto):
@@ -299,6 +303,9 @@ class Jarvis:
         else:
             _voz_windows(texto)
         self._falando.clear()
+        # Fez uma pergunta ("Confirma?"): a resposta vem sem precisar dizer "Jarvis"
+        if texto.rstrip().endswith("?") and self._mic_ligado:
+            self._ouvir_agora.set()
 
     # ---------- comandos ----------
     def _processar(self, texto):
@@ -436,6 +443,15 @@ class Jarvis:
             return self._resumir_videos(pedido["busca"], pedido["quantidade"])
         if acao == "autoatualizar":
             return self._preparar_autoatualizacao(pedido["pedido"])
+        if acao == "lembrete":
+            return self._criar_lembrete(pedido)
+        if acao == "lembretes_listar":
+            return self._listar_lembretes()
+        if acao == "lembretes_cancelar":
+            n = self._cancelar_lembretes("lembrete")
+            return f"Cancelei {n} lembrete{'s' if n > 1 else ''}, senhor." if n else "Não havia lembretes, senhor."
+        if acao == "foco":
+            return self._modo_foco(pedido["ligar"], pedido.get("intervalo", 1800), pedido.get("duracao", 0))
 
         if acao == "config_email":
             enviar_email.preparar()
@@ -706,6 +722,77 @@ class Jarvis:
         subprocess.Popen([sys.executable, os.path.join(PASTA, "app.py")], cwd=PASTA)
         threading.Timer(2.5, self._janela.destroy).start()
         return "Reiniciando, senhor. Volto em alguns segundos."
+
+    # ---------- lembretes, timer e modo foco ----------
+    def _agendar(self, segundos, fala, tipo, descricao=""):
+        item = {"quando": time.time() + segundos, "fala": fala, "tipo": tipo, "descricao": descricao}
+
+        def disparar():
+            self._lembretes = [i for i in self._lembretes if i is not item]
+            self._avisar(fala)
+
+        item["timer"] = threading.Timer(segundos, disparar)
+        item["timer"].daemon = True
+        item["timer"].start()
+        self._lembretes.append(item)
+
+    def _avisar(self, fala):
+        """Fala o aviso na hora certa, esperando o Jarvis terminar o que estiver fazendo."""
+        log.info("Aviso agendado: %s", fala)
+        self._ui("nota", "⏰ " + fala)
+        with self._trava:
+            self._ui("bip")
+            self._falar(fala, lembrar=False)
+            self._estado_parado()
+
+    def _cancelar_lembretes(self, tipo):
+        cancelados = [i for i in self._lembretes if i["tipo"] == tipo]
+        for item in cancelados:
+            item["timer"].cancel()
+        self._lembretes = [i for i in self._lembretes if i["tipo"] != tipo]
+        return len(cancelados)
+
+    def _criar_lembrete(self, pedido):
+        segundos, texto, quando = pedido["segundos"], pedido["texto"], pedido["quando"]
+        if segundos > 7 * 24 * 3600:
+            return "Consigo lembrar só até uma semana adiante, senhor."
+        if pedido["timer"]:
+            fala, descricao = f"Senhor, o timer de {tempo_falado(segundos)} terminou.", f"timer de {tempo_falado(segundos)}"
+        elif texto:
+            fala, descricao = f"Senhor, está na hora de {texto}.", texto
+        else:
+            fala, descricao = "Senhor, o senhor me pediu para avisar agora.", "um aviso"
+        self._agendar(segundos, fala, "lembrete", descricao)
+        self._ui("nota", f"⏰ {descricao}, {quando} ({time.strftime('%H:%M', time.localtime(time.time() + segundos))})")
+        return f"Certo, senhor. Aviso {quando}" + (f": {texto}." if texto and not pedido["timer"] else ".")
+
+    def _listar_lembretes(self):
+        lembretes = sorted((i for i in self._lembretes if i["tipo"] == "lembrete"), key=lambda i: i["quando"])
+        foco = any(i["tipo"] == "foco" for i in self._lembretes)
+        if not lembretes:
+            return "Nenhum lembrete agendado, senhor." + (" O modo foco está ligado." if foco else "")
+        partes = [f"{i['descricao']} às {time.strftime('%H:%M', time.localtime(i['quando']))}" for i in lembretes[:5]]
+        total = len(lembretes)
+        fala = f"Tenho {total} lembrete{'s' if total > 1 else ''}: " + "; ".join(partes) + "."
+        return fala + (" E o modo foco está ligado." if foco else "")
+
+    def _modo_foco(self, ligar, intervalo=1800, duracao=0):
+        """Lembra de beber água a cada tanto tempo; com duração, avisa quando a sessão termina."""
+        estava = self._cancelar_lembretes("foco")
+        if not ligar:
+            return "Modo foco desligado, senhor." if estava else "O modo foco não estava ligado, senhor."
+        fim = duracao or 8 * 3600  # sem duração, fica ligado por até 8 horas
+        frases = ["Senhor, hora de beber um pouco de água.", "Uma pausa rápida, senhor: beba água.",
+                  "Lembrete do modo foco: um copo de água, senhor."]
+        n = 1
+        while n * intervalo < fim and n <= 60:
+            self._agendar(n * intervalo, frases[(n - 1) % len(frases)], "foco")
+            n += 1
+        if duracao:
+            self._agendar(duracao, "O modo foco terminou, senhor. Bom trabalho. Hora de levantar e descansar um pouco.", "foco")
+            return (f"Modo foco ligado por {tempo_falado(duracao)}, senhor. "
+                    f"Lembro de beber água a cada {tempo_falado(intervalo)}.")
+        return f"Modo foco ligado, senhor. Lembro de beber água a cada {tempo_falado(intervalo)}. Diga desliga o modo foco para parar."
 
     def _modo_tela(self, tarefa):
         """O Jarvis vê a tela e age nela, passo a passo, falando o que faz."""

@@ -27,10 +27,16 @@ Regra: tudo que publica, instala, clica na tela ou apaga pede confirmação ("Co
   Todos os vídeos (até 200) com dados e descrição; os 10 primeiros com legenda lida; o Claude faz resumo geral,
   pontos principais e resumo por vídeo. Salva em pdfs/ e copia para Meu Drive\Jarvis\Relatórios do YouTube
   (google_drive.py acha a pasta do Google Drive para computador sozinho).
+- [x] Ideias do vídeo "Instale o JARVIS no seu PC" (ideias/2026-10-19-0900-...):
+  conversa de continuação (quando o Jarvis termina a fala com pergunta, como "Confirma?", a resposta vem sem dizer
+  "Jarvis"); lembretes e timer ("me lembra em 10 minutos de tirar o bolo", "me lembra às 3 da tarde de...",
+  "me acorda às 7", "timer de 5 minutos", "quais são meus lembretes", "cancela os lembretes"; ficam só na memória,
+  somem se reiniciar); modo foco ("liga o modo foco", "modo foco por 1 hora a cada 20 minutos": lembra de beber água,
+  "desliga o modo foco").
 - [x] 4+5. Ver a tela e clicar: já existia (agente_tela.py, "usa a tela e ..."; pânico = mouse no canto superior esquerdo)
 - [x] Já existiam: bot do Telegram, comandos personalizados (meus_comandos.json), segredos no .env
 
 ## Ideias dos vídeos (o Claude lê daqui para atualizar o Jarvis)
-- [ ] ideias/2026-10-19-0900-https-youtu-be-llqcqmerdkm-si-4wjvnjrex6.md (https://youtu.be/lLQCqMErDkM?si=4wjVNJreX6RlzL8z)
+- [x] ideias/2026-10-19-0900-https-youtu-be-llqcqmerdkm-si-4wjvnjrex6.md (feito: ideias 3 e 8; status do PC já existia) (https://youtu.be/lLQCqMErDkM?si=4wjVNJreX6RlzL8z)
 - [ ] ideias/2026-10-19-0857-https-youtu-be-llqcqmerdkm-si-4wjvnjrex6.md (https://youtu.be/lLQCqMErDkM?si=4wjVNJreX6RlzL8z)
 - [ ] ideias/2026-10-19-0827-https-youtu-be-llqcqmerdkm-si-5dxpj0gqre.md (https://youtu.be/lLQCqMErDkM?si=5dxpJ0gqRea3d9r2)

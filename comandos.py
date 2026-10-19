@@ -73,6 +73,8 @@ AJUDA = (
     "dizer as horas e a data, controlar o volume e mostrar o status do sistema. "
     "Com o Claude, eu crio apps e sites para o senhor e respondo qualquer pergunta. "
     "Também junto até 100 arquivos em um PDF e baixo vídeos e músicas do YouTube. "
+    "Faço lembretes e timers, como: me lembra em 10 minutos de tirar o bolo, e tenho o modo foco, "
+    "que lembra o senhor de beber água. "
     "É só dizer, por exemplo: Jarvis, cria um site de portfólio."
 )
 
@@ -95,6 +97,112 @@ _PALAVRAS_YOUTUBE = (
 )
 _NUMEROS = {"um": 1, "uma": 1, "dois": 2, "duas": 2, "tres": 3, "quatro": 4, "cinco": 5, "seis": 6, "sete": 7,
             "oito": 8, "nove": 9, "dez": 10, "quinze": 15, "vinte": 20, "trinta": 30, "quarenta": 40, "cinquenta": 50}
+
+
+_NUMEROS_TEMPO = {**_NUMEROS, "onze": 11, "doze": 12, "treze": 13, "catorze": 14, "quatorze": 14,
+                  "dezesseis": 16, "dezessete": 17, "dezoito": 18, "dezenove": 19}
+_NUM_TEMPO = r"\d{1,4}|" + "|".join(sorted(_NUMEROS_TEMPO, key=len, reverse=True))
+_DURACAO = (rf"(?:\b(?:{_NUM_TEMPO})\s*(?:segundos?|seg|minutos?|min|horas?|h)\b(?:\s+e\s+meia\b)?"
+            r"|\bmeia hora\b)")
+_HORARIO = (rf"\b(?:as|pras)\s+({_NUM_TEMPO})(?:(?::|h)(\d{{2}})|\s*(?:h|horas?)(?:\s+e\s+(\d{{1,2}}))?)?"
+            r"(?:\s+(?:minutos?\s+)?(?:da|de)\s+(manha|tarde|noite|madrugada))?\b")
+_PEDE_AVISO = r"\b(?:me |nos )?(?:lembr\w*|avis\w*|acord\w*|despert\w*)\b"
+
+
+def _numero(palavra):
+    return int(palavra) if palavra.isdigit() else _NUMEROS_TEMPO.get(palavra, 0)
+
+
+def _duracao(t):
+    """Segundos de um trecho como "10 minutos", "uma hora e meia", "meia hora". 0 se não tiver."""
+    total = 0
+    for trecho in re.finditer(_DURACAO, t):
+        pedaco = trecho.group()
+        if pedaco.startswith("meia"):
+            total += 1800
+            continue
+        numero, unidade = re.match(rf"({_NUM_TEMPO})\s*([a-z]+)", pedaco).groups()
+        total += _numero(numero) * (3600 if unidade.startswith("h") else 60 if unidade.startswith("min") else 1)
+        if pedaco.endswith("meia"):
+            total += 1800
+    return total
+
+
+def _ate_horario(t):
+    """"às 15:30", "às 3 da tarde": devolve (segundos até lá, "15:30"), ou (0, "")."""
+    achado = re.search(_HORARIO, t)
+    if not achado:
+        return 0, ""
+    hora = _numero(achado.group(1))
+    minuto = int(achado.group(2) or achado.group(3) or 0)
+    periodo = achado.group(4)
+    if periodo in ("tarde", "noite") and hora < 12:
+        hora += 12
+    if hora > 23 or minuto > 59:
+        return 0, ""
+    agora = datetime.datetime.now()
+    alvo = agora.replace(hour=hora, minute=minuto, second=0, microsecond=0)
+    acordar = re.search(r"\b(?:acord\w*|despert\w*)\b", t)
+    if alvo <= agora and not periodo and not acordar and hora < 12 and alvo + datetime.timedelta(hours=12) > agora:
+        alvo += datetime.timedelta(hours=12)  # "às 3" depois do almoço = 15h
+    if alvo <= agora:
+        alvo += datetime.timedelta(days=1)
+    return (alvo - agora).total_seconds(), alvo.strftime("%H:%M")
+
+
+def tempo_falado(segundos):
+    h, resto = divmod(int(round(segundos)), 3600)
+    m, s = divmod(resto, 60)
+    partes = []
+    if h:
+        partes.append(f"{h} hora" + ("s" if h > 1 else ""))
+    if m:
+        partes.append(f"{m} minuto" + ("s" if m > 1 else ""))
+    if s and not h:
+        partes.append(f"{s} segundo" + ("s" if s > 1 else ""))
+    return " e ".join(partes) or "instantes"
+
+
+def _lembrete(t, original):
+    """Lembrete, timer ou modo foco. Devolve a ação, uma resposta, ou None se a frase não é disso."""
+    def tem(*padroes):
+        return any(re.search(rf"\b{p}\b", t) for p in padroes)
+
+    if tem("modo foco", "modo de foco", "modo concentracao"):
+        if re.search(r"\b(?:deslig\w*|desativ\w*|encerr\w*|termin\w*|cancel\w*)\b|\bsai\w* do modo|\bpar[ae] o modo", t):
+            return {"acao": "foco", "ligar": False}
+        cada = re.search(r"\ba cada (.+?)(?=\b(?:por|durante)\b|$)", t)
+        por = re.search(r"\b(?:por|durante)\s+(.+?)(?=\ba cada\b|$)", t)
+        return {"acao": "foco", "ligar": True,
+                "intervalo": max((_duracao(cada.group(1)) if cada else 0) or 1800, 60),
+                "duracao": _duracao(por.group(1)) if por else 0}
+
+    eh_timer = tem("timer", "temporizador", r"cronometr\w*", "alarme")
+    if tem(r"lembretes?", "timers?", "temporizador", "alarmes?") and tem(r"cancel\w*", r"apag\w*", r"remov\w*", r"desliga\w*", r"tira\w*"):
+        return {"acao": "lembretes_cancelar"}
+    if tem(r"lembretes", "timers", "alarmes") or (tem("lembrete", "timer", "alarme") and tem("quais", "quantos", "tenho", "algum")):
+        return {"acao": "lembretes_listar"}
+    if not (eh_timer or re.search(_PEDE_AVISO, t)):
+        return None
+
+    segundos, horario = _ate_horario(t)
+    prefixo = r"(?:\b(?:em|daqui a|daqui|dentro de|depois de|de|por)\s+)?"
+    if not segundos and (eh_timer or re.search(rf"\b(?:em|daqui|dentro de|depois de)\s+(?:a\s+)?{_DURACAO}", t)):
+        segundos = _duracao(t)
+    if not segundos:
+        if re.match(r"(?:pode\s+)?me\s+lembr", t):
+            return "Quando, senhor? Diga, por exemplo: me lembra em 10 minutos de tirar o bolo do forno."
+        return None
+
+    resto = t
+    for padrao in (_HORARIO, prefixo + _DURACAO, _PEDE_AVISO,
+                   r"\b(?:um |o )?(?:timer|temporizador|alarme|cronometr\w*)\b", r"\b(?:pode|por favor|coloca|poe|bota)\b"):
+        resto = re.sub(padrao, " ", resto)
+    resto = re.sub(r"^(?:(?:de|do|da|que|para|pra|pro|sobre|e)\s+)+", "", " ".join(resto.split()))
+    resto = re.sub(r"\s+(?:e|de|que)$", "", resto)
+    texto = _com_acentos(resto, t, original) if len(resto) > 2 else ""
+    quando = f"às {horario}" if horario else f"daqui a {tempo_falado(segundos)}"
+    return {"acao": "lembrete", "segundos": segundos, "texto": texto, "timer": eh_timer and not texto, "quando": quando}
 
 
 def _quantidade(t, padrao):
@@ -199,6 +307,11 @@ def executar(comando):
     # ----- abas da interface -----
     if tem("aba", "abas", "guia", "guias") and tem(r"fech\w*", r"tira\w*", r"some\w*", r"sai\w*"):
         return {"acao": "fechar_aba", "todas": tem("todas", "tudo")}
+
+    # ----- lembretes, timer e modo foco (antes do YouTube: "me lembra de assistir o vídeo...") -----
+    lembrete = _lembrete(t, original)
+    if lembrete is not None:
+        return lembrete
 
     # ----- YouTube: baixar vídeo ou música (antes dos links, senão o link iria para a biblioteca) -----
     link_youtube = re.search(r"https?://(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)/[^\s<>\"]+", comando)
