@@ -58,12 +58,18 @@ def _eh_jarvis(palavra):
     return bool(VARIACOES.fullmatch(palavra)) or difflib.SequenceMatcher(None, palavra, "jarvis").ratio() >= 0.7
 
 
+# Palavras que podem vir antes do chamado: "ei Jarvis", "ok Jarvis", "bom dia Jarvis"
+ANTES_DO_CHAMADO = {"ei", "ey", "hey", "oi", "ola", "ok", "okay", "fala", "e", "ai", "o", "bom", "boa", "dia", "tarde",
+                    "noite", "alo", "salve", "opa"}
+
+
 def separar_chamado(texto):
-    """Se a frase chama o Jarvis (no começo ou no fim), devolve o comando sem o chamado. Senão, None."""
+    """Se a frase chama o Jarvis (no começo ou no fim), devolve o comando sem o chamado. Senão, None.
+    "Jarvis" no meio de um pedido ("pesquisa jarvis no youtube") é assunto, não chamado."""
     texto = texto.strip()
     palavras = list(re.finditer(r"\w+", normalizar(texto)))
-    for palavra in palavras[:3]:
-        if _eh_jarvis(palavra.group()):
+    for n, palavra in enumerate(palavras[:3]):
+        if _eh_jarvis(palavra.group()) and all(p.group() in ANTES_DO_CHAMADO for p in palavras[:n]):
             return texto[palavra.end():].strip(" ,.!?")
     if len(palavras) > 3 and _eh_jarvis(palavras[-1].group()):
         # "baixa os vídeos do Jarvis": aqui "Jarvis" é o assunto, não o chamado
@@ -86,6 +92,8 @@ class Jarvis:
         self._pendente = None      # confirmação por voz: callable -> str, à espera de "sim"/"não"
         self._pendente_tg = None   # confirmação pelo Telegram, separada da voz
         self._bot = None           # bot do Telegram, se ligado
+        self._aba_ativa = "jarvis"  # aba na frente da interface ("navegador" = mini tela)
+        self._url_mini = ""         # site aberto na mini tela
         self._lembretes = []       # lembretes, timers e avisos do modo foco agendados
 
     # ---------- chamados pela interface ----------
@@ -212,6 +220,12 @@ class Jarvis:
         return f"Vou apagar o comando {comando['frases'][0]}. Confirma?"
 
     # ---------- mini tela: navegador do Jarvis dentro da interface ----------
+    def contexto_interface(self, aba, url=""):
+        """A interface avisa qual aba está na frente e o site da mini tela."""
+        self._aba_ativa = str(aba or "jarvis")
+        if url:
+            self._url_mini = str(url)
+
     def navegador_info(self):
         import navegador
         return {"quadro": f"/navegador/{servidor.TOKEN}/quadro.jpg",
@@ -233,7 +247,9 @@ class Jarvis:
                 navegador.digitar(str(valor))
             elif tipo in ("voltar", "avancar", "recarregar"):
                 getattr(navegador, tipo)()
-            return navegador.estado()
+            estado = navegador.estado()
+            self._url_mini = estado.get("url") or self._url_mini
+            return estado
         except Exception as erro:
             log.warning("Mini tela: falha em %s", tipo, exc_info=True)
             return {"erro": str(erro)[:200]}
@@ -245,7 +261,8 @@ class Jarvis:
         def abrir():
             self._ui("atividade", "Abrindo na mini tela…")
             try:
-                navegador.abrir(alvo or navegador.INICIO, buscador)
+                self._url_mini = navegador.abrir(alvo or navegador.INICIO, buscador) or self._url_mini
+                self._aba_ativa = "navegador"  # a interface confirma em seguida, mas o próximo comando já vale
                 self._ui("abrirNavegador")
             except Exception as erro:
                 log.exception("Falha ao abrir a mini tela: %s", alvo)
@@ -509,7 +526,8 @@ class Jarvis:
 
             self._mudar_estado("pensando")
             try:
-                resposta = executar(comando)
+                # com a mini tela na frente, "pesquisa X", "volta", "clica em..." valem para ela
+                resposta = executar(comando, mini_tela=self._aba_ativa == "navegador", url_mini=self._url_mini)
                 if isinstance(resposta, dict):
                     resposta = self._acao(resposta)
             except Exception:
@@ -620,6 +638,14 @@ class Jarvis:
             return f"O senhor tem {len(meus)} comando{'s' if len(meus) > 1 else ''}: {nomes}."
         if acao == "navegador_abrir":
             return self._abrir_mini_tela(pedido["alvo"], pedido.get("buscador", "bing"))
+        if acao == "navegador_controle":
+            nomes = {"voltar": "Voltando.", "avancar": "Avançando.", "recarregar": "Recarregando a página.",
+                     "rolar": "Descendo." if (pedido.get("valor") or 0) > 0 else "Subindo."}
+            estado = self.navegador_acao(pedido["tipo"], pedido.get("valor"))
+            if isinstance(estado, dict) and estado.get("url"):
+                self._url_mini = estado["url"]
+            return nomes.get(pedido["tipo"], "Feito.") if not (isinstance(estado, dict) and estado.get("erro")) \
+                else "Não consegui fazer isso na mini tela, senhor."
         if acao == "navegador_agente":
             return self._modo_navegador(pedido["tarefa"])
         if acao == "navegador_fechar":

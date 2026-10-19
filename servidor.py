@@ -39,15 +39,16 @@ class _Manipulador(http.server.SimpleHTTPRequestHandler):
     def _quadro_navegador(self):
         import navegador
         try:
-            imagem = navegador.quadro()
+            imagem, carregando = navegador.quadro_ao_vivo()
         except Exception:
-            imagem = None
+            imagem, carregando = None, True
         if not imagem:
             self.send_error(503)
             return
         self.send_response(200)
         self.send_header("Content-Type", "image/jpeg")
         self.send_header("Content-Length", str(len(imagem)))
+        self.send_header("X-Carregando", "1" if carregando else "0")  # a interface mostra "carregando…"
         self.end_headers()
         self.wfile.write(imagem)
 

@@ -218,8 +218,53 @@ _VERBO_ABRIR = r"(?:abr\w*|entr\w*|vai|acess\w*|mostr\w*|carreg\w*)"
 _VERBO_BUSCAR = r"(?:pesquis\w*|procur\w*|busc\w*|googl\w*)"
 
 
-def _mini_tela(t, original):
-    """Abrir site ou pesquisa na mini tela, pedir para o Jarvis agir nela, ou fechá-la. None se não for isso."""
+_FILLERS = r"^(?:(?:agora|entao|ai|ja|jarvis|pode|por favor|roda|vai|e)\s+)+"
+_AGIR_NA_PAGINA = (r"^(?:clic\w*|aperta\w*|aperte|seleciona\w*|escolh\w*|entr\w*\s+n[oa]|assist\w*|escrev\w*|"
+                   r"preench\w*|digit\w*|marc\w*|fech\w*\s+(?:o|a)\s+(?:anuncio|propaganda|aviso|popup|janela)|"
+                   r"pul\w*\s+(?:o|a)\s+(?:anuncio|propaganda)|abre\s+o\s+(?:primeiro|segundo|terceiro|ultimo)|"
+                   r"le\b|leia|ler|copi\w*|faz\w*|faca)")
+
+
+def _mini_tela_ativa(t, original, url):
+    """Com a mini tela na frente, comandos de navegar valem para ela sem precisar dizer "na mini tela"."""
+    if re.search(r"\b(?:no navegador de fora|la fora|no chrome|no opera|fora do jarvis)\b", t):
+        return None
+    pedido = re.sub(_FILLERS, "", t).strip()
+    no_youtube = "youtube.com" in (url or "")
+    controles = [
+        (r"(?:volta|voltar|volte)(?: a pagina| pra tras| para tras)?", ("voltar", None)),
+        (r"(?:avanca|avancar|vai pra frente)", ("avancar", None)),
+        (r"(?:recarrega|recarregar|atualiza a pagina|atualizar a pagina|f5)", ("recarregar", None)),
+        (r"(?:desce|descer|rola|rolar|rola pra baixo|rola para baixo|abaixa|desce a pagina|mais pra baixo)", ("rolar", 600)),
+        (r"(?:sobe|subir|rola pra cima|rola para cima|sobe a pagina|mais pra cima)", ("rolar", -600)),
+    ]
+    for padrao, (tipo, valor) in controles:
+        if re.fullmatch(padrao, pedido):
+            return {"acao": "navegador_controle", "tipo": tipo, "valor": valor}
+    buscar = re.match(rf"(?:{_VERBO_BUSCAR}|toca|toque|coloca|bota)\s+(.+)", pedido)
+    if buscar:
+        alvo = buscar.group(1)
+        if no_youtube or re.search(r"\b(?:videos?|musicas?|clipes?|youtube)\b", alvo):
+            limpo = _limpar(alvo, r"(?:o|um|uns|os) videos?", r"videos?", r"(?:a|uma) musicas?", r"musicas?",
+                            r"(?:o|um) clipe", "clipe", r"(?:no|do) youtube", "youtube", "do", "da", "de")
+            return {"acao": "navegador_abrir", "alvo": limpo or alvo, "buscador": "youtube"}
+        return {"acao": "navegador_abrir", "alvo": _com_acentos(alvo, t, original), "buscador": "bing"}
+    abrir = re.fullmatch(rf"{_VERBO_ABRIR}\s+(?:(?:o|a|em|no|na|site|pagina|do|da)\s+)*([\w.-]+(?:\s[\w.-]+)?)", pedido)
+    if abrir and not re.search(r"\b(?:primeiro|segundo|terceiro|ultimo|video|link|resultado)\b", pedido):
+        alvo = abrir.group(1)
+        for nome, (_falado, endereco) in SITES.items():
+            if alvo == nome:
+                return {"acao": "navegador_abrir", "alvo": endereco}
+        if "." in alvo:
+            return {"acao": "navegador_abrir", "alvo": alvo}
+    if re.match(_AGIR_NA_PAGINA, pedido):
+        return {"acao": "navegador_agente", "tarefa": _com_acentos(pedido, t, original)}
+    return None
+
+
+def _mini_tela(t, original, ativa=False, url=""):
+    """Abrir site ou pesquisa na mini tela, pedir para o Jarvis agir nela, ou fechá-la. None se não for isso.
+    ativa: a mini tela está na frente da tela; aí "pesquisa X", "volta", "clica em..." valem para ela."""
     # "pesquisa no bing X" / "pesquisa na microsoft X": a busca da Microsoft sempre abre na mini tela
     microsoft = re.search(rf"^(?:pode\s+)?{_VERBO_BUSCAR}\s+(?:no bing|na microsoft|no edge)\s+(?:por\s+|sobre\s+)?(.+)", t)
     if microsoft:
@@ -228,6 +273,10 @@ def _mini_tela(t, original):
     no_fim = re.search(rf"\s+(?:{_MINI}|aqui)$", t)
     if citou and re.search(r"\b(?:fech\w*|deslig\w*|encerr\w*|sai\w*)\b", t):
         return {"acao": "navegador_fechar"}
+    if ativa and not citou:
+        foco = _mini_tela_ativa(t, original, url)
+        if foco is not None:
+            return foco
     if not (citou or no_fim):
         return None
     pedido = re.sub(rf"\s*,?\s*\b(?:{_MINI})\b\s*,?\s*", " ", t)
@@ -366,10 +415,35 @@ def _status():
     return texto
 
 
-def executar(comando):
-    """Recebe o que você falou e devolve o que o Jarvis vai responder."""
+_VERBOS_CONHECIDOS = ["procura", "pesquisa", "busca", "abre", "abrir", "baixa", "baixar", "toca", "clica", "volta",
+                      "desce", "fecha", "resume", "cria", "mostra", "entra", "assiste", "coloca", "manda", "liga",
+                      "desliga", "aumenta", "diminui", "recarrega", "avanca", "seleciona", "escreve", "lembra"]
+_PALAVRAS_COMUNS = {"agora", "sobre", "pode", "para", "porque", "quanto", "quando", "onde", "como", "qual", "quais",
+                    "voce", "jarvis", "isso", "esse", "essa", "aqui", "este", "esta", "video", "videos", "musica",
+                    "minha", "meu", "favor", "entao", "tudo", "todos", "todas", "mais", "menos", "tela", "mini",
+                    "site", "pagina", "senhor", "obrigado", "valeu", "certo", "beleza", "legal", "bom", "dia",
+                    "noite", "tarde", "hoje", "amanha", "ontem", "tambem", "depois", "antes", "rapido", "baixo",
+                    "cima", "primeiro", "ultimo", "ajuda", "horas", "data", "sobe", "rola", "pula", "para"}
+
+
+def _corrigir_verbos(t):
+    """Conserta erros de digitação no verbo do começo da frase ("porcvura" -> "procura", "pesqusia" -> "pesquisa")."""
+    palavras = t.split()
+    for i, palavra in enumerate(palavras[:3]):
+        if len(palavra) < 4 or palavra in _PALAVRAS_COMUNS or palavra in _VERBOS_CONHECIDOS or not palavra.isalpha():
+            continue
+        parecido = difflib.get_close_matches(palavra, _VERBOS_CONHECIDOS, n=1, cutoff=0.72)
+        if parecido:
+            palavras[i] = parecido[0]
+            break
+    return " ".join(palavras)
+
+
+def executar(comando, mini_tela=False, url_mini=""):
+    """Recebe o que você falou e devolve o que o Jarvis vai responder.
+    mini_tela: a mini tela está na frente da tela (comandos de navegar valem para ela); url_mini: o site dela."""
     original = comando.lower().strip().strip(" ,.!?")
-    t = normalizar(comando).strip(" ,.!?")
+    t = _corrigir_verbos(normalizar(comando).strip(" ,.!?"))
 
     def tem(*padroes):
         return any(re.search(rf"\b{p}\b", t) for p in padroes)
@@ -427,7 +501,7 @@ def executar(comando):
         return {"acao": "erros"}
 
     # ----- mini tela: navegador do Jarvis dentro da interface (antes do modo tela: "na tela do jarvis") -----
-    mini = _mini_tela(t, original)
+    mini = _mini_tela(t, original, mini_tela, url_mini)
     if mini is not None:
         return mini
 

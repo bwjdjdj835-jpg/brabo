@@ -38,6 +38,8 @@ _fila = None
 _thread = None
 _estado = {"contexto": None, "pagina": None, "pw": None, "processo": None}
 _trava = threading.Lock()
+_trabalhando = threading.Event()   # a thread do Playwright está no meio de algo (abrindo página, clicando...)
+_ultimo_quadro = {"jpeg": None, "pedido": False}
 
 
 # ---------- thread do Playwright ----------
@@ -47,10 +49,13 @@ def _laco(fila):
         if item is None:  # esta thread foi aposentada
             return
         funcao, args, resposta = item
+        _trabalhando.set()
         try:
             resposta.put((True, funcao(*args)))
         except Exception as erro:  # o erro volta para quem chamou
             resposta.put((False, erro))
+        finally:
+            _trabalhando.clear()
 
 
 def _novo_trabalhador():
@@ -66,7 +71,7 @@ def _fechar_edges_do_perfil():
     pasta e a mini tela não abre. O Edge normal do usuário usa outra pasta e não é tocado."""
     import psutil
     alvo = os.path.normcase(os.path.abspath(PERFIL))
-    fechados = 0
+    fechados = []
     for processo in psutil.process_iter(["name", "cmdline"]):
         try:
             if (processo.info["name"] or "").lower() != "msedge.exe":
@@ -74,20 +79,23 @@ def _fechar_edges_do_perfil():
             linha = os.path.normcase(" ".join(processo.info["cmdline"] or []))
             if alvo in linha:
                 processo.kill()
-                fechados += 1
+                fechados.append(processo)
         except (psutil.Error, OSError):
             continue
     if fechados:
-        log.info("Mini tela: fechei %d processos do Edge que seguravam a pasta do perfil", fechados)
-        time.sleep(1.5)  # o Windows solta a pasta logo depois
-    return fechados
+        # com a memória cheia o Windows leva vários segundos para encerrar de verdade; até lá a pasta fica presa
+        _, vivos = psutil.wait_procs(fechados, timeout=15)
+        log.info("Mini tela: fechei %d processos do Edge que seguravam a pasta do perfil (%d demoraram)",
+                 len(fechados), len(vivos))
+        time.sleep(0.5)
+    return len(fechados)
 
 
 def _recomecar():
     """Aposenta a thread do Playwright (com o Edge dela) e cria outra, zerada."""
     with _trava:
         velha, processo = _fila, _estado["processo"]
-        _estado.update(contexto=None, pagina=None, pw=None, processo=None)
+        _estado.update(contexto=None, pagina=None, pw=None, processo=None, cdp=None, cdp_pagina=None)
         _novo_trabalhador()
     if velha is not None:
         velha.put(None)
@@ -108,7 +116,10 @@ def _rodar(funcao, *args, limite=45, recomecar=True):
         fila = _fila
     resposta = queue.Queue(maxsize=1)
     fila.put((funcao, args, resposta))
-    deu_certo, valor = resposta.get(timeout=limite)
+    try:
+        deu_certo, valor = resposta.get(timeout=limite)
+    except queue.Empty:
+        raise TimeoutError(f"o navegador da mini tela não respondeu em {limite} s") from None
     if deu_certo:
         return valor
     if recomecar and any(trecho in str(valor) for trecho in ERROS_DE_ESTADO):
@@ -126,11 +137,15 @@ EDGE = os.path.join(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)
                     "Microsoft", "Edge", "Application", "msedge.exe")
 
 
+# --disable-gpu: sem ele, num PC com pouca memória a parte gráfica do Edge invisível cai em páginas pesadas
+# (YouTube) e toda foto da página falha com "Unable to capture screenshot"; desenhando pelo processador funciona.
+ARGS_EDGE = ["--disable-blink-features=AutomationControlled", "--disable-gpu"]
+
+
 def _ligar_pelo_playwright(pw):
     return pw.chromium.launch_persistent_context(
         PERFIL, channel="msedge", headless=True, locale="pt-BR",
-        viewport={"width": LARGURA, "height": ALTURA},
-        args=["--disable-blink-features=AutomationControlled"],
+        viewport={"width": LARGURA, "height": ALTURA}, args=ARGS_EDGE,
     )
 
 
@@ -144,8 +159,7 @@ def _ligar_pelo_python(pw):
         porta = s.getsockname()[1]
     processo = subprocess.Popen(
         [EDGE, "--headless=new", f"--remote-debugging-port={porta}", f"--user-data-dir={PERFIL}",
-         f"--window-size={LARGURA},{ALTURA}", "--lang=pt-BR", "--disable-blink-features=AutomationControlled",
-         "--no-first-run", "about:blank"],
+         f"--window-size={LARGURA},{ALTURA}", "--lang=pt-BR", *ARGS_EDGE, "--no-first-run", "about:blank"],
         creationflags=subprocess.CREATE_NO_WINDOW)
     _estado["processo"] = processo
     for _ in range(40):  # até 20 s para o Edge abrir a porta
@@ -216,14 +230,14 @@ def _desligar():
         finally:
             if _estado["processo"] is not None:  # Edge aberto pelo caminho reserva
                 _estado["processo"].kill()
-            _estado.update(contexto=None, pagina=None, pw=None, processo=None)
+            _estado.update(contexto=None, pagina=None, pw=None, processo=None, cdp=None, cdp_pagina=None)
 
 
 # ---------- endereços ----------
 def endereco(texto, buscador="bing"):
     """"g1.com.br" -> https://g1.com.br; "receita de bolo" -> busca no Bing; link completo fica igual."""
     texto = texto.strip()
-    if re.match(r"https?://", texto):
+    if re.match(r"(?:https?|file)://", texto):
         return texto
     if re.fullmatch(r"[\w.-]+\.[a-z]{2,}(?:/\S*)?", texto, re.I) and " " not in texto:
         return "https://" + texto
@@ -243,7 +257,9 @@ def abrir(texto=INICIO, buscador="bing"):
     def _abrir(url):
         pagina = _pagina()
         try:
-            pagina.goto(url, wait_until="domcontentloaded", timeout=45000)
+            # "commit": volta assim que a página começa a chegar, para a mini tela já ir mostrando o carregamento
+            pagina.goto(url, wait_until="commit", timeout=45000)
+            pagina.wait_for_load_state("domcontentloaded", timeout=10000)
         except Exception as erro:  # página lenta (ou PC sem memória): mostra o que já carregou
             log.warning("Navegador: %s demorou para abrir (%s)", url, str(erro).splitlines()[0])
         return pagina.url
@@ -295,9 +311,15 @@ def recarregar():
     _rodar(lambda: _pagina().reload(wait_until="domcontentloaded", timeout=30000))
 
 
+_ultimo_estado = {"url": "", "titulo": ""}
+
+
 def estado():
+    """Endereço e título da página. Se o Edge estiver ocupado (página pesada carregando), devolve o último
+    conhecido em vez de travar quem perguntou."""
     if not ligado():
         return {"url": "", "titulo": ""}
+
     def _ler():
         pagina = _pagina()
         try:
@@ -305,20 +327,105 @@ def estado():
         except Exception:
             titulo = ""
         return {"url": pagina.url, "titulo": titulo}
-    return _rodar(_ler, limite=10)
+    try:
+        _ultimo_estado.update(_rodar(_ler, limite=20))
+    except Exception:
+        log.info("Mini tela: Edge ocupado; usando o último endereço conhecido")
+    return dict(_ultimo_estado)
+
+
+def _foto(pagina, formato="jpeg", qualidade=60):
+    """Foto da parte visível da página. Usa o protocolo do próprio Edge (Page.captureScreenshot), que não espera
+    fontes nem animações: o screenshot comum do Playwright travava em páginas pesadas, como o YouTube."""
+    import base64
+    try:
+        if _estado.get("cdp_pagina") is not pagina:
+            _estado["cdp"] = pagina.context.new_cdp_session(pagina)
+            _estado["cdp_pagina"] = pagina
+        parametros = {"format": formato, "captureBeyondViewport": False}
+        if formato == "jpeg":
+            parametros["quality"] = qualidade
+        return base64.b64decode(_estado["cdp"].send("Page.captureScreenshot", parametros)["data"])
+    except Exception:
+        _estado["cdp_pagina"] = None
+        log.info("Mini tela: foto pelo protocolo falhou; usando a do Playwright", exc_info=True)
+        if formato == "jpeg":
+            return pagina.screenshot(type="jpeg", quality=qualidade, timeout=20000, animations="disabled")
+        return pagina.screenshot(type="png", timeout=20000, animations="disabled")
 
 
 def quadro(qualidade=60):
     """Imagem atual da mini tela em JPEG (bytes), para a interface. None se o navegador está desligado."""
+    return quadro_ao_vivo(qualidade)[0]
+
+
+def quadro_ao_vivo(qualidade=60):
+    """Devolve (jpeg, carregando). Se o navegador estiver ocupado (abrindo uma página pesada, por exemplo),
+    devolve a última imagem em vez de esperar: assim a mini tela nunca fica em branco nem pisca, e os pedidos
+    de imagem não se acumulam na fila atrasando os cliques."""
     if not ligado():
-        return None
-    return _rodar(lambda: _pagina().screenshot(type="jpeg", quality=qualidade, timeout=5000), limite=10)
+        return None, False
+    if _trabalhando.is_set() or _ultimo_quadro["pedido"]:
+        return _ultimo_quadro["jpeg"], True
+    _ultimo_quadro["pedido"] = True
+    try:
+        jpeg = _rodar(lambda: _foto(_pagina(), "jpeg", qualidade), limite=8, recomecar=False)
+        _ultimo_quadro["jpeg"] = jpeg
+        return jpeg, False
+    except Exception:
+        return _ultimo_quadro["jpeg"], True
+    finally:
+        _ultimo_quadro["pedido"] = False
+
+
+# Botões, links e campos visíveis, com o centro de cada um: o agente clica pelo número em vez de adivinhar
+# a posição na foto (muito mais certeiro em páginas cheias, como YouTube e Google Maps).
+_JS_ELEMENTOS = r"""() => {
+  const seletor = 'a[href],button,input:not([type=hidden]),textarea,select,[role=button],[role=link],[role=tab],'
+    + '[role=menuitem],[role=option],[role=searchbox],[role=textbox],[onclick],[contenteditable=true]';
+  const saida = [], vistos = new Set();
+  for (const el of document.querySelectorAll(seletor)) {
+    const r = el.getBoundingClientRect();
+    if (r.width < 6 || r.height < 6 || r.bottom < 0 || r.right < 0 || r.top > innerHeight || r.left > innerWidth) continue;
+    const st = getComputedStyle(el);
+    if (st.visibility === 'hidden' || st.display === 'none' || Number(st.opacity) < 0.1) continue;
+    const x = Math.round(Math.min(Math.max(r.left + r.width / 2, 1), innerWidth - 1));
+    const y = Math.round(Math.min(Math.max(r.top + r.height / 2, 1), innerHeight - 1));
+    const topo = document.elementFromPoint(x, y);
+    if (topo && topo !== el && !el.contains(topo) && !topo.contains(el)) continue;  // coberto por outra coisa
+    const chave = x + ',' + y;
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    const texto = (el.getAttribute('aria-label') || el.innerText || el.value || el.getAttribute('title')
+      || el.getAttribute('placeholder') || el.getAttribute('alt') || '').trim().replace(/\s+/g, ' ').slice(0, 70);
+    const tag = el.tagName.toLowerCase();
+    const tipo = tag === 'input' ? 'campo' : tag === 'textarea' || el.isContentEditable || /box/.test(el.getAttribute('role') || '') ? 'campo'
+      : tag === 'a' || el.getAttribute('role') === 'link' ? 'link' : tag === 'select' ? 'lista' : 'botao';
+    if (!texto && tipo !== 'campo') continue;
+    saida.push({x, y, tipo, texto});
+    if (saida.length >= 90) break;
+  }
+  return saida;
+}"""
+
+
+def elementos():
+    """[{id, x, y, tipo, texto}] do que dá para clicar ou preencher na parte visível da página."""
+    lista = _rodar(lambda: _pagina().evaluate(_JS_ELEMENTOS), limite=25)
+    return [{"id": n, **item} for n, item in enumerate(lista, 1)]
 
 
 def capturar():
     """Para o agente: salva a imagem da página e devolve (caminho, largura, altura)."""
     os.makedirs(os.path.dirname(CAPTURA), exist_ok=True)
-    _rodar(lambda: _pagina().screenshot(path=CAPTURA, timeout=10000))
+    try:
+        imagem = _rodar(lambda: _foto(_pagina(), "png"), limite=40)
+    except TimeoutError:
+        imagem = _ultimo_quadro["jpeg"]  # Edge muito ocupado: o agente olha a última imagem da mini tela
+        if not imagem:
+            raise
+    with open(CAPTURA, "wb") as arquivo:
+        arquivo.write(imagem)
     return CAPTURA, LARGURA, ALTURA
 
 
