@@ -119,8 +119,10 @@ def _casar(frase, texto, original=None):
     Com variáveis ("pesquisa rapida {busca}"): as partes fixas precisam vir em ordem, e o resto vira a variável.
     """
     if "{" not in frase and re.search(r"[/.\\]", frase):
-        # código ("b/00000", "a/100/100/100/200"): só vale se for exatamente o código, sem contar espaços
-        return {} if re.sub(r"\s+", "", texto) == re.sub(r"\s+", "", _normalizar(frase)) else None
+        # código ("b/00000", "a/100/100/100/200"): só vale se for exatamente o código, sem contar espaços.
+        # "a/0109010011 {pedido}" digitado com as chaves também cai aqui (e o Jarvis explica como usar)
+        falado = re.sub(r"\{\w+\}", "", texto)
+        return {} if re.sub(r"\s+", "", falado) == re.sub(r"\s+", "", _normalizar(frase)) else None
     if "{" not in frase:
         palavras = re.findall(r"\w+", _normalizar(frase))
         if palavras and all(re.search(rf"\b{re.escape(p)}\b", texto) for p in palavras):
@@ -134,8 +136,8 @@ def _casar(frase, texto, original=None):
         elif parte.strip():
             padrao += r"\s*" + r"\s+".join(re.escape(p) for p in parte.split()) + r"\s*"
     achado = re.fullmatch(rf"(?:pode\s+|por favor\s+)?{padrao}", texto.strip())
-    if not achado:
-        return None
+    if not achado or any(re.fullmatch(r"\{\w+\}", v.strip()) for v in achado.groupdict().values()):
+        return None  # o modelo digitado com as chaves ("{pedido}") não é um pedido de verdade
     valores = {}
     for nome, valor in achado.groupdict().items():
         inicio, fim = achado.span(nome)

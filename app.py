@@ -249,8 +249,9 @@ class Jarvis:
                 self._ui("abrirNavegador")
             except Exception as erro:
                 log.exception("Falha ao abrir a mini tela: %s", alvo)
+                motivo = str(erro) if isinstance(erro, navegador.Bloqueado) else "Veja os detalhes no registro."
                 with self._trava:
-                    self._falar(f"Não consegui abrir a mini tela, senhor. {str(erro)[:120]}")
+                    self._falar(f"Não consegui abrir a mini tela, senhor. {motivo}")
                     self._estado_parado()
 
         threading.Thread(target=abrir, daemon=True).start()

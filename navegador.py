@@ -31,7 +31,7 @@ BUSCAS = {"bing": "https://www.bing.com/search?q=", "google": "https://www.googl
 log = logging.getLogger("jarvis")
 _fila = queue.Queue()
 _thread = None
-_estado = {"contexto": None, "pagina": None, "pw": None}
+_estado = {"contexto": None, "pagina": None, "pw": None, "processo": None}
 _trava = threading.Lock()
 
 
@@ -60,17 +60,81 @@ def _rodar(funcao, *args, limite=45):
     return valor
 
 
+class Bloqueado(RuntimeError):
+    """O Windows (geralmente o antivírus) não deixou o Jarvis abrir o Edge."""
+
+
+EDGE = os.path.join(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+                    "Microsoft", "Edge", "Application", "msedge.exe")
+
+
+def _ligar_pelo_playwright(pw):
+    return pw.chromium.launch_persistent_context(
+        PERFIL, channel="msedge", headless=True, locale="pt-BR",
+        viewport={"width": LARGURA, "height": ALTURA},
+        args=["--disable-blink-features=AutomationControlled"],
+    )
+
+
+def _ligar_pelo_python(pw):
+    """Caminho reserva: o próprio Python abre o Edge e o Playwright só se conecta nele.
+    Alguns antivírus bloqueiam o Playwright (node) de abrir o Edge, mas deixam o Python."""
+    import socket
+    import subprocess
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        porta = s.getsockname()[1]
+    processo = subprocess.Popen(
+        [EDGE, "--headless=new", f"--remote-debugging-port={porta}", f"--user-data-dir={PERFIL}",
+         f"--window-size={LARGURA},{ALTURA}", "--lang=pt-BR", "--disable-blink-features=AutomationControlled",
+         "--no-first-run", "about:blank"],
+        creationflags=subprocess.CREATE_NO_WINDOW)
+    _estado["processo"] = processo
+    for _ in range(40):  # até 20 s para o Edge abrir a porta
+        try:
+            navegador = pw.chromium.connect_over_cdp(f"http://127.0.0.1:{porta}", timeout=3000)
+            contexto = navegador.contexts[0] if navegador.contexts else navegador.new_context()
+            for pagina in contexto.pages:
+                pagina.set_viewport_size({"width": LARGURA, "height": ALTURA})
+            contexto.on("page", lambda p: p.set_viewport_size({"width": LARGURA, "height": ALTURA}))
+            return contexto
+        except Exception:
+            time.sleep(0.5)
+    processo.kill()
+    raise RuntimeError("o Edge abriu mas não respondeu")
+
+
+def _ligar():
+    """Liga o Edge: tenta o jeito normal 3 vezes (o bloqueio do antivírus costuma ser passageiro) e depois o reserva."""
+    from playwright.sync_api import sync_playwright
+    if _estado["pw"] is None:
+        _estado["pw"] = sync_playwright().start()
+    os.makedirs(PERFIL, exist_ok=True)
+    erros = []
+    for tentativa in range(3):
+        try:
+            return _ligar_pelo_playwright(_estado["pw"])
+        except Exception as erro:
+            erros.append(str(erro).splitlines()[0])
+            log.warning("Mini tela: Edge não abriu (tentativa %d): %s", tentativa + 1, erros[-1])
+            time.sleep(2)
+    try:
+        contexto = _ligar_pelo_python(_estado["pw"])
+        log.info("Mini tela: Edge aberto pelo caminho reserva")
+        return contexto
+    except Exception as erro:
+        erros.append(str(erro).splitlines()[0])
+        log.error("Mini tela: Edge não abriu de jeito nenhum: %s", erros)
+    if any("EPERM" in e or "Acesso negado" in e or "WinError 5" in e for e in erros):
+        raise Bloqueado("O Windows bloqueou o navegador da mini tela, provavelmente o antivírus. Tente de novo em "
+                        "alguns segundos; se continuar, libere a pasta do Jarvis no antivírus.")
+    raise Bloqueado("Não consegui ligar o navegador da mini tela agora. Tente de novo em alguns segundos.")
+
+
 def _pagina():
     """Liga o Edge na primeira vez. Sempre devolve a aba ativa (a mais nova, se o site abriu outra)."""
     if _estado["contexto"] is None:
-        from playwright.sync_api import sync_playwright
-        _estado["pw"] = sync_playwright().start()
-        os.makedirs(PERFIL, exist_ok=True)
-        contexto = _estado["pw"].chromium.launch_persistent_context(
-            PERFIL, channel="msedge", headless=True, locale="pt-BR",
-            viewport={"width": LARGURA, "height": ALTURA},
-            args=["--disable-blink-features=AutomationControlled"],
-        )
+        contexto = _ligar()
         contexto.on("page", lambda pagina: _estado.update(pagina=pagina))  # site abriu nova aba: segue nela
         _estado["contexto"] = contexto
         _estado["pagina"] = contexto.pages[0] if contexto.pages else contexto.new_page()
@@ -90,7 +154,9 @@ def _desligar():
             _estado["contexto"].close()
             _estado["pw"].stop()
         finally:
-            _estado.update(contexto=None, pagina=None, pw=None)
+            if _estado["processo"] is not None:  # Edge aberto pelo caminho reserva
+                _estado["processo"].kill()
+            _estado.update(contexto=None, pagina=None, pw=None, processo=None)
 
 
 # ---------- endereços ----------
@@ -110,18 +176,19 @@ def ligado():
 
 
 def preparar():
-    _rodar(_pagina)
+    _rodar(_pagina, limite=120)
 
 
 def abrir(texto=INICIO, buscador="bing"):
     def _abrir(url):
         pagina = _pagina()
         try:
-            pagina.goto(url, wait_until="domcontentloaded", timeout=30000)
-        except Exception as erro:  # página lenta: mostra o que já carregou
-            log.warning("Navegador: %s demorou para abrir (%s)", url, erro)
+            pagina.goto(url, wait_until="domcontentloaded", timeout=45000)
+        except Exception as erro:  # página lenta (ou PC sem memória): mostra o que já carregou
+            log.warning("Navegador: %s demorou para abrir (%s)", url, str(erro).splitlines()[0])
         return pagina.url
-    return _rodar(_abrir, endereco(texto or INICIO, buscador))
+    # ligar o Edge pode levar várias tentativas, e o PC pode estar lento: espera bastante
+    return _rodar(_abrir, endereco(texto or INICIO, buscador), limite=180)
 
 
 def clicar(x, y, duplo=False, botao="left"):
