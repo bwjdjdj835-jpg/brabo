@@ -118,6 +118,9 @@ def _casar(frase, texto, original=None):
     Sem variáveis: casa se todas as palavras da frase aparecem no que foi falado (o jeito antigo).
     Com variáveis ("pesquisa rapida {busca}"): as partes fixas precisam vir em ordem, e o resto vira a variável.
     """
+    if "{" not in frase and re.search(r"[/.\\]", frase):
+        # código ("b/00000", "a/100/100/100/200"): só vale se for exatamente o código, sem contar espaços
+        return {} if re.sub(r"\s+", "", texto) == re.sub(r"\s+", "", _normalizar(frase)) else None
     if "{" not in frase:
         palavras = re.findall(r"\w+", _normalizar(frase))
         if palavras and all(re.search(rf"\b{re.escape(p)}\b", texto) for p in palavras):

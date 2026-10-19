@@ -6,6 +6,10 @@ Para desfazer um ciclo: `git log` e `git revert <commit>`.
 Regra: tudo que publica, instala, clica na tela ou apaga pede confirmação ("Confirma?") antes.
 
 ## A fazer
+- [ ] Código A/1070809.7080: publicar na Vercel (com confirmação), gravar prévias de campanha automotiva e preparar
+  os vídeos para postagem (postar sempre com confirmação). Hoje o código só abre a Vercel na mini tela.
+- [ ] Código C/01070910111213141516: renomear o assistente para "Braga"? (perguntar ao usuário: nome falado,
+  palavra de chamada e título da janela)
 - [ ] 3. Voz mais Jarvis: efeito de rádio/metálico leve, escolher voz, interromper a fala ("para")
 - [ ] 6. Publicar o último site/web app na Vercel (com confirmação; precisa `npx vercel login` uma vez)
 - [ ] 7. Instalar programas pelo winget ("instala o VLC"), com confirmação

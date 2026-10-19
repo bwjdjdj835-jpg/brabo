@@ -39,6 +39,145 @@
         "tipo": "pasta",
         "caminho": "C:\\Users\\bwjdj\\Documents"
       }
+    },
+    {
+      "nome": "B/00000 · monitor",
+      "frases": [
+        "b/00000",
+        "modo monitor"
+      ],
+      "acao": {
+        "tipo": "comandos",
+        "lista": [
+          "abre o youtube na mini tela"
+        ]
+      },
+      "descricao": "Abre a mini tela no YouTube para acompanhar pesquisas, downloads e automações."
+    },
+    {
+      "nome": "A/0109010011 · site para cliente",
+      "frases": [
+        "a/0109010011 {pedido}",
+        "site para cliente {pedido}"
+      ],
+      "acao": {
+        "tipo": "comandos",
+        "lista": [
+          "cria um site profissional e interativo para {pedido}, pesquisando referências do ramo antes de criar"
+        ]
+      },
+      "descricao": "Pesquisa o ramo do cliente e cria um site profissional e interativo para ele."
+    },
+    {
+      "nome": "A/0109010011 · ajuda",
+      "frases": [
+        "a/0109010011"
+      ],
+      "acao": {
+        "tipo": "responder",
+        "texto": "Para quem é o site, senhor? Diga o código seguido do cliente e do ramo, por exemplo: A/0109010011 barbearia Legado em Cacoal."
+      },
+      "descricao": "Explica como usar o código de sites para clientes."
+    },
+    {
+      "nome": "A/100/100/100/200 · prospecção",
+      "frases": [
+        "a/100/100/100/200 {nicho}",
+        "prospecção {nicho}"
+      ],
+      "acao": {
+        "tipo": "mini_tela",
+        "tarefa": "Abra https://www.google.com/maps/search/{nicho} e leia a lista de resultados (role se precisar). No resumo final, liste até 10 negócios com nome, nota, telefone e site, quando aparecerem. Só pesquise e anote: não envie mensagens nem abra conversas."
+      },
+      "descricao": "Pesquisa negócios no Google Maps e lista nome, nota, telefone e site para o senhor contatar."
+    },
+    {
+      "nome": "A/100/100/100/200 · ajuda",
+      "frases": [
+        "a/100/100/100/200"
+      ],
+      "acao": {
+        "tipo": "responder",
+        "texto": "Qual ramo e cidade, senhor? Por exemplo: A/100/100/100/200 barbearias em Cacoal. Eu levanto os contatos no Google Maps; as mensagens o senhor manda, porque mensagem automática em massa no WhatsApp é spam e pode banir o número."
+      },
+      "descricao": "Explica como usar o código de prospecção."
+    },
+    {
+      "nome": "A/1070809.7080 · Vercel",
+      "frases": [
+        "a/1070809.7080",
+        "modo vercel"
+      ],
+      "acao": {
+        "tipo": "comandos",
+        "lista": [
+          "abre vercel.com na mini tela"
+        ]
+      },
+      "descricao": "Abre a Vercel na mini tela. Publicar, gravar prévias e postar vídeos ainda serão criados."
+    },
+    {
+      "nome": "C/102/107/108/109/110 · estudar vídeos",
+      "frases": [
+        "c/102/107/108/109/110 {tema}",
+        "estuda os videos de {tema}"
+      ],
+      "acao": {
+        "tipo": "comandos",
+        "lista": [
+          "resume os vídeos sobre {tema}",
+          "baixa 5 vídeos de {tema}"
+        ]
+      },
+      "descricao": "Busca vídeos sobre o tema, resume as ideias para atualizar o Jarvis e baixa 5 vídeos. Depois é só dizer: se atualiza."
+    },
+    {
+      "nome": "C/102/107/108/109/110 · ajuda",
+      "frases": [
+        "c/102/107/108/109/110"
+      ],
+      "acao": {
+        "tipo": "responder",
+        "texto": "Sobre qual tema, senhor? Por exemplo: C/102/107/108/109/110 como fazer um Jarvis. Ou cole o link da playlist no painel do YouTube."
+      },
+      "descricao": "Explica como usar o código de estudar vídeos."
+    },
+    {
+      "nome": "C/01070910111213141516 · memória",
+      "frases": [
+        "c/01070910111213141516",
+        "o que voce lembra"
+      ],
+      "acao": {
+        "tipo": "perguntar",
+        "texto": "Resuma em até quatro frases o que você lembra das nossas conversas recentes e dos projetos que criou, e o que está pendente."
+      },
+      "descricao": "Conta o que o assistente lembra das conversas e dos projetos, e o que está pendente."
+    },
+    {
+      "nome": "C/1020304050607080 · eBook",
+      "frases": [
+        "c/1020304050607080 {tema}",
+        "cria um ebook sobre {tema}"
+      ],
+      "acao": {
+        "tipo": "comandos",
+        "lista": [
+          "cria um projeto de ebook profissional sobre {tema}, com capa, contracapa, sumário e páginas diagramadas em tamanho A5, em HTML pronto para salvar em PDF pelo Ctrl+P"
+        ]
+      },
+      "descricao": "Cria um eBook profissional sobre o tema, com capa, contracapa e páginas diagramadas."
+    },
+    {
+      "nome": "C/1020304050607080 · ajuda",
+      "frases": [
+        "c/1020304050607080"
+      ],
+      "acao": {
+        "tipo": "responder",
+        "texto": "Sobre qual tema é o eBook, senhor? Por exemplo: C/1020304050607080 receitas fit para iniciantes."
+      },
+      "descricao": "Explica como usar o código de eBooks."
     }
   ]
 }
