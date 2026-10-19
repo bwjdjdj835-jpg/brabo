@@ -28,36 +28,94 @@ INICIO = "https://www.bing.com"
 BUSCAS = {"bing": "https://www.bing.com/search?q=", "google": "https://www.google.com/search?q=",
           "youtube": "https://www.youtube.com/results?search_query="}
 
+# Erros que mostram que o Playwright desta thread ficou inutilizável (ex.: depois de o antivírus bloquear o
+# Edge, ou de o Edge ser fechado por fora). A saída é jogar tudo fora e começar numa thread nova.
+ERROS_DE_ESTADO = ("asyncio loop", "Event loop is closed", "Connection closed", "has been closed",
+                   "Target closed", "Browser closed")
+
 log = logging.getLogger("jarvis")
-_fila = queue.Queue()
+_fila = None
 _thread = None
 _estado = {"contexto": None, "pagina": None, "pw": None, "processo": None}
 _trava = threading.Lock()
 
 
 # ---------- thread do Playwright ----------
-def _laco():
+def _laco(fila):
     while True:
-        funcao, args, resposta = _fila.get()
+        item = fila.get()
+        if item is None:  # esta thread foi aposentada
+            return
+        funcao, args, resposta = item
         try:
             resposta.put((True, funcao(*args)))
         except Exception as erro:  # o erro volta para quem chamou
             resposta.put((False, erro))
 
 
-def _rodar(funcao, *args, limite=45):
-    """Executa funcao(*args) na thread do Playwright e devolve o resultado (ou levanta o erro)."""
-    global _thread
+def _novo_trabalhador():
+    global _fila, _thread
+    _fila = queue.Queue()
+    _thread = threading.Thread(target=_laco, args=(_fila,), daemon=True, name="navegador")
+    _thread.start()
+
+
+def _fechar_edges_do_perfil():
+    """Fecha os Edges invisíveis que estão usando a pasta da mini tela (sobras de uma tentativa que falhou ou
+    de um Jarvis que fechou de mal jeito). Enquanto um deles estiver aberto, nenhum Edge novo consegue usar a
+    pasta e a mini tela não abre. O Edge normal do usuário usa outra pasta e não é tocado."""
+    import psutil
+    alvo = os.path.normcase(os.path.abspath(PERFIL))
+    fechados = 0
+    for processo in psutil.process_iter(["name", "cmdline"]):
+        try:
+            if (processo.info["name"] or "").lower() != "msedge.exe":
+                continue
+            linha = os.path.normcase(" ".join(processo.info["cmdline"] or []))
+            if alvo in linha:
+                processo.kill()
+                fechados += 1
+        except (psutil.Error, OSError):
+            continue
+    if fechados:
+        log.info("Mini tela: fechei %d processos do Edge que seguravam a pasta do perfil", fechados)
+        time.sleep(1.5)  # o Windows solta a pasta logo depois
+    return fechados
+
+
+def _recomecar():
+    """Aposenta a thread do Playwright (com o Edge dela) e cria outra, zerada."""
+    with _trava:
+        velha, processo = _fila, _estado["processo"]
+        _estado.update(contexto=None, pagina=None, pw=None, processo=None)
+        _novo_trabalhador()
+    if velha is not None:
+        velha.put(None)
+    if processo is not None:
+        try:
+            processo.kill()
+        except OSError:
+            pass
+    _fechar_edges_do_perfil()
+
+
+def _rodar(funcao, *args, limite=45, recomecar=True):
+    """Executa funcao(*args) na thread do Playwright e devolve o resultado (ou levanta o erro).
+    Se o Playwright tiver ficado inutilizável, recomeça do zero e tenta mais uma vez."""
     with _trava:
         if _thread is None or not _thread.is_alive():
-            _thread = threading.Thread(target=_laco, daemon=True, name="navegador")
-            _thread.start()
+            _novo_trabalhador()
+        fila = _fila
     resposta = queue.Queue(maxsize=1)
-    _fila.put((funcao, args, resposta))
+    fila.put((funcao, args, resposta))
     deu_certo, valor = resposta.get(timeout=limite)
-    if not deu_certo:
-        raise valor
-    return valor
+    if deu_certo:
+        return valor
+    if recomecar and any(trecho in str(valor) for trecho in ERROS_DE_ESTADO):
+        log.warning("Mini tela: Playwright inutilizável (%s); recomeçando do zero", str(valor).splitlines()[0])
+        _recomecar()
+        return _rodar(funcao, *args, limite=limite, recomecar=False)
+    raise valor
 
 
 class Bloqueado(RuntimeError):
@@ -110,6 +168,7 @@ def _ligar():
     if _estado["pw"] is None:
         _estado["pw"] = sync_playwright().start()
     os.makedirs(PERFIL, exist_ok=True)
+    _fechar_edges_do_perfil()  # sobra de uma vez anterior seguraria a pasta
     erros = []
     for tentativa in range(3):
         try:
@@ -117,6 +176,7 @@ def _ligar():
         except Exception as erro:
             erros.append(str(erro).splitlines()[0])
             log.warning("Mini tela: Edge não abriu (tentativa %d): %s", tentativa + 1, erros[-1])
+            _fechar_edges_do_perfil()
             time.sleep(2)
     try:
         contexto = _ligar_pelo_python(_estado["pw"])
