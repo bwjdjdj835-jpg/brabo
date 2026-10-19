@@ -1228,7 +1228,23 @@ def main():
         background_color="#020a12",
     )
     jarvis._janela = janela
+    threading.Thread(target=_vigiar_abertura, args=(jarvis,), daemon=True).start()
     webview.start()
+
+
+def _vigiar_abertura(jarvis, limite=60):
+    """Raramente o Windows trava ao carregar a janela (o .NET do pywebview). Se em 60 s a interface não
+    avisou que abriu, o Jarvis se abre de novo, uma vez só, e este processo encerra."""
+    time.sleep(limite)
+    if jarvis._iniciado:
+        return
+    if os.environ.get("JARVIS_REABERTO"):
+        log.error("A janela não abriu de novo em %d s. Feche o Jarvis e abra pelo atalho.", limite)
+        return
+    log.warning("A janela não abriu em %d s; abrindo o Jarvis de novo", limite)
+    subprocess.Popen([sys.executable, os.path.join(PASTA, "app.py")], cwd=PASTA,
+                     env={**os.environ, "JARVIS_REABERTO": "1"})
+    os._exit(1)
 
 
 if __name__ == "__main__":
