@@ -1434,19 +1434,20 @@ def _sou_o_unico():
     import ctypes
     kernel32, user32 = ctypes.windll.kernel32, ctypes.windll.user32
     kernel32.CreateMutexW.restype = ctypes.c_void_p
-    # reaberto pela vigia: espera o processo antigo terminar de fechar
-    tentativas = 40 if os.environ.get("JARVIS_REABERTO") else 1
-    for _ in range(tentativas):
+    reaberto = os.environ.get("JARVIS_REABERTO")
+    for _ in range(60):  # até 15 s
         trava = kernel32.CreateMutexW(None, True, "Local\\JarvisAssistenteUnico")
         if kernel32.GetLastError() != 183:  # 183 = ERROR_ALREADY_EXISTS
             _trava_unica = trava
             return True
         kernel32.CloseHandle(ctypes.c_void_p(trava))
+        janela = user32.FindWindowW(None, "J.A.R.V.I.S.")
+        if janela and not reaberto:
+            user32.ShowWindow(janela, 9)  # 9 = restaurar, se estiver minimizada
+            user32.SetForegroundWindow(janela)
+            return False
+        # sem janela: o Jarvis antigo está fechando (ou travou e a vigia vai fechá-lo); espera ele sair
         time.sleep(0.25)
-    janela = user32.FindWindowW(None, "J.A.R.V.I.S.")
-    if janela:
-        user32.ShowWindow(janela, 9)  # 9 = restaurar, se estiver minimizada
-        user32.SetForegroundWindow(janela)
     return False
 
 
