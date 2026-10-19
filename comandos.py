@@ -210,7 +210,9 @@ def _lembrete(t, original):
     return {"acao": "lembrete", "segundos": segundos, "texto": texto, "timer": eh_timer and not texto, "quando": quando}
 
 
-_MINI = (r"(?:(?:na|a|da|no|o|do|pela|pelo|pra|pro|para a|para o)\s+)?(?:mini\s?tela|navegador do jarvis|tela do jarvis)"
+# "mini tela" aceita os jeitos que costuma sair escrito ("mine tela", "mioni tela", "minitela"), mas não "minha tela"
+_MINI = (r"(?:(?:na|a|da|no|o|do|pela|pelo|pra|pro|para a|para o)\s+)?"
+         r"(?:mi(?!nha\b)[a-z]{0,3}\s?tela|navegador do jarvis|tela do jarvis)"
          r"|dentro do jarvis|aqui dentro")
 _VERBO_ABRIR = r"(?:abr\w*|entr\w*|vai|acess\w*|mostr\w*|carreg\w*)"
 _VERBO_BUSCAR = r"(?:pesquis\w*|procur\w*|busc\w*|googl\w*)"

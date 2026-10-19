@@ -4,6 +4,14 @@ import os
 # Deixa a interface tocar a voz sem precisar de um clique antes
 os.environ.setdefault("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--autoplay-policy=no-user-gesture-required")
 
+# Carrega o .NET (usado pela janela do pywebview) antes de qualquer outra thread existir: carregado depois,
+# com as threads do Jarvis já rodando, às vezes trava para sempre e a janela não abre.
+if __name__ == "__main__":
+    try:
+        import clr  # noqa: F401
+    except Exception:
+        pass
+
 import asyncio
 import base64
 import datetime
@@ -26,7 +34,6 @@ import webview
 
 import biblioteca
 import claude_code
-import conversor_pdf
 import engenharia
 import enviar_email
 import memoria
@@ -315,6 +322,7 @@ class Jarvis:
         self._ui("nota", self._escolher_para_pdf())
 
     def _escolher_para_pdf(self):
+        import conversor_pdf  # só aqui: carregar o PDF no início deixava o Jarvis 2 s mais lento para abrir
         tipo = getattr(getattr(webview, "FileDialog", None), "OPEN", None) or webview.OPEN_DIALOG
         escolhidos = list(self._janela.create_file_dialog(tipo, allow_multiple=True) or [])
         if not escolhidos:
@@ -328,6 +336,7 @@ class Jarvis:
     def _pdf_fundo(self, caminhos, titulo, base=None):
         """Gera o PDF em segundo plano, mostra o caminho no registro e abre a pasta com ele selecionado."""
         def tarefa():
+            import conversor_pdf
             self._ui("tarefa", "Gerando PDF", titulo)
             try:
                 resultado = conversor_pdf.juntar(
@@ -571,6 +580,8 @@ class Jarvis:
             _mostrar_arquivo(biblioteca.ARQUIVOS)
             return "Abrindo a pasta da biblioteca."
 
+        if acao in ("pdf_jarvis", "pdf_biblioteca"):
+            import conversor_pdf
         if acao == "pdf_jarvis":
             self._pdf_fundo(conversor_pdf.arquivos_do_jarvis(), "Projeto Jarvis", conversor_pdf.PASTA)
             return ("Vou juntar todo o meu código em um PDF, senhor. A senha do e-mail e as conversas ficam de fora. "
@@ -1384,6 +1395,9 @@ def main():
         format="%(asctime)s %(levelname)s %(message)s",
         encoding="utf-8",
     )
+    if not _sou_o_unico():
+        log.info("O Jarvis já estava aberto: trouxe a janela para a frente")
+        return
     log.info("Iniciando o Jarvis")
     segredos.preparar()
     jarvis = Jarvis()
@@ -1408,6 +1422,32 @@ def main():
     jarvis._janela = janela
     threading.Thread(target=_vigiar_abertura, args=(jarvis,), daemon=True).start()
     webview.start()
+
+
+_trava_unica = None  # fica aberta enquanto o Jarvis roda
+
+
+def _sou_o_unico():
+    """Só um Jarvis por vez: dois brigam pela janela e pelo microfone, e o segundo trava.
+    Se já houver um aberto, traz a janela dele para a frente e devolve False."""
+    global _trava_unica
+    import ctypes
+    kernel32, user32 = ctypes.windll.kernel32, ctypes.windll.user32
+    kernel32.CreateMutexW.restype = ctypes.c_void_p
+    # reaberto pela vigia: espera o processo antigo terminar de fechar
+    tentativas = 40 if os.environ.get("JARVIS_REABERTO") else 1
+    for _ in range(tentativas):
+        trava = kernel32.CreateMutexW(None, True, "Local\\JarvisAssistenteUnico")
+        if kernel32.GetLastError() != 183:  # 183 = ERROR_ALREADY_EXISTS
+            _trava_unica = trava
+            return True
+        kernel32.CloseHandle(ctypes.c_void_p(trava))
+        time.sleep(0.25)
+    janela = user32.FindWindowW(None, "J.A.R.V.I.S.")
+    if janela:
+        user32.ShowWindow(janela, 9)  # 9 = restaurar, se estiver minimizada
+        user32.SetForegroundWindow(janela)
+    return False
 
 
 def _vigiar_abertura(jarvis, limite=60):
