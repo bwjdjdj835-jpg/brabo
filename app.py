@@ -299,9 +299,13 @@ class Jarvis:
                     os.startfile(r["envios"])
                 except OSError:
                     log.warning("Não consegui abrir %s", r["envios"], exc_info=True)
+                if r["videos"]:
+                    self._ui("nota", r["pasta_videos"])
+                    _mostrar_arquivo(r["pasta_videos"])  # os MP4 ficam na pasta Vídeos do notebook
                 fala = (f"Pronto, senhor. Encontrei {r['negocios']} comércios, fiz as prévias e gravei {r['videos']} "
-                        f"vídeos. {r['com_whatsapp']} têm celular para WhatsApp. Abri a página de envios: confira "
-                        "cada mensagem, anexe o vídeo e envie um por um.")
+                        f"vídeos em MP4, que estão na pasta Vídeos, Jarvis, Prospecção. {r['com_whatsapp']} têm "
+                        "celular para WhatsApp. Abri a página de envios: confira cada mensagem, anexe o vídeo e envie "
+                        "um por um.")
             except Exception as erro:
                 log.exception("Falha na prospecção: %s", busca)
                 fala = f"Não consegui terminar a prospecção, senhor. {str(erro)[:150]}"

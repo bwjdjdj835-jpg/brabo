@@ -6,7 +6,8 @@ proibido pelo WhatsApp, costuma banir o número de quem envia e esbarra na LGPD.
 mensagem a um clique ("Abrir no WhatsApp" já abre a conversa com o texto escrito); o usuário confere, anexa o
 vídeo e envia, um por um.
 
-Tudo fica em prospeccao/<busca>/: negocios.csv, previas/<comércio>/index.html, videos/<comércio>.mp4, envios.html.
+A lista e as prévias ficam em prospeccao/<busca>/ (negocios.csv, previas/<comércio>/index.html, envios.html).
+Os vídeos MP4 ficam na pasta Vídeos do notebook: Vídeos\\Jarvis\\Prospecção\\<busca>\\<comércio>.mp4.
 """
 import csv
 import datetime
@@ -27,6 +28,23 @@ import navegador
 
 PASTA = os.path.dirname(os.path.abspath(__file__))
 SAIDA = os.path.join(PASTA, "prospeccao")
+
+
+def pasta_videos():
+    """A pasta Vídeos do Windows (onde ela estiver de verdade), para os MP4 ficarem fáceis de achar."""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                            r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders") as chave:
+            caminho = os.path.expandvars(winreg.QueryValueEx(chave, "My Video")[0])
+        if os.path.isdir(caminho):
+            return caminho
+    except OSError:
+        pass
+    return os.path.join(os.path.expanduser("~"), "Videos")
+
+
+VIDEOS = os.path.join(pasta_videos(), "Jarvis", "Prospecção")
 MEUS_DADOS = os.path.join(PASTA, "biblioteca", "meus_dados.md")
 PADRAO_NEGOCIOS = 5
 MAX_NEGOCIOS = 15
@@ -370,12 +388,13 @@ def executar(busca, quantidade=PADRAO_NEGOCIOS, ao_evento=None, gravar=True):
         avisar(f"Prévia {n}/{len(negocios)} · {negocio['nome'][:50]}")
         negocio["previa"] = gerar_previa(negocio, busca, pasta)
     videos = 0
+    pasta_mp4 = os.path.join(VIDEOS, os.path.basename(pasta))  # Vídeos\Jarvis\Prospecção\<data-busca>
     if gravar:
         for n, negocio in enumerate(negocios, 1):
             avisar(f"Gravando vídeo {n}/{len(negocios)} · {negocio['nome'][:50]}")
             try:
                 negocio["video"] = gravar_video(negocio["previa"],
-                                                os.path.join(pasta, "videos", _slug(negocio["nome"]) + ".mp4"))
+                                                os.path.join(pasta_mp4, _slug(negocio["nome"]) + ".mp4"))
                 videos += 1
             except Exception:
                 log.warning("Prospecção: falha ao gravar o vídeo de %s", negocio["nome"], exc_info=True)
@@ -383,5 +402,5 @@ def executar(busca, quantidade=PADRAO_NEGOCIOS, ao_evento=None, gravar=True):
     _salvar_lista(negocios, pasta)
     envios = pagina_de_envios(busca, negocios, pasta)
     log.info("Prospecção '%s': %d comércios, %d vídeos, em %s", busca, len(negocios), videos, pasta)
-    return {"pasta": pasta, "envios": envios, "negocios": len(negocios), "videos": videos,
+    return {"pasta": pasta, "envios": envios, "negocios": len(negocios), "videos": videos, "pasta_videos": pasta_mp4,
             "com_whatsapp": sum(1 for n in negocios if whatsapp_de(n.get("telefone")))}

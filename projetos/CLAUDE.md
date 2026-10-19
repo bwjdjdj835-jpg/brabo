@@ -25,7 +25,7 @@ então podem vir com erros de digitação ou transcrição: entenda a intenção
 - Envio de mensagens (WhatsApp, e-mail, SMS) só para contatos que autorizaram receber, e pelas APIs oficiais.
 
 ## Biblioteca do usuário
-- Em `C:\Users\bwjdj\Documents\Jarvis\biblioteca` ficam as referências que o usuário mandou: fotos de interfaces,
+- Em `C:\Users\bwjdj\Jarvis\biblioteca` ficam as referências que o usuário mandou: fotos de interfaces,
   logos, documentos e links (resumidos em `indice.json`), e os dados dele em `meus_dados.md` (marca, cores,
   contato, chave Pix, planos). O resumo disso chega junto com cada pedido.
 - Antes de criar, abra os itens relevantes e siga o estilo e os dados deles. Se `meus_dados.md` tiver cores,
