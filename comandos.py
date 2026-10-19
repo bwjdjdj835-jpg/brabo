@@ -215,7 +215,7 @@ def executar(comando):
                   or _quantidade(t, None) is not None)
         if varios and not (link_youtube and not playlist):
             return {"acao": "youtube_baixar_varios", "alvo": alvo, "audio": audio,
-                    "quantidade": _quantidade(t, 200 if playlist else 20)}
+                    "quantidade": _quantidade(t, 200 if playlist else (150 if tem("todos", "todas") else 20))}
         return {"acao": "youtube_baixar", "alvo": alvo, "audio": audio}
 
     # ----- o Jarvis se atualiza: o Claude Code mexe no código dele (sempre com confirmação) -----

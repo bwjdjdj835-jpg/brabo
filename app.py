@@ -121,6 +121,34 @@ class Jarvis:
         dados = base64.b64decode(conteudo_base64)
         self._guardar(lambda: biblioteca.adicionar_bytes(nome, dados), nome)
 
+    def youtube_painel(self, alvo, quantidade, audio, resumir):
+        """Painel "Baixar do YouTube": link de playlist ou vídeo, ou um texto para buscar."""
+        alvo = (alvo or "").strip()
+        if not alvo:
+            return
+        import youtube
+
+        def rodar():
+            with self._trava:
+                self._ui("voceDisse", f"{'Resumir' if resumir else 'Baixar'} do YouTube: {alvo}")
+                self._mudar_estado("pensando")
+                try:
+                    if resumir:
+                        import autoestudo
+                        fala = self._resumir_videos(alvo, min(quantidade or 5, autoestudo.MAX_VIDEOS))
+                    elif youtube.eh_link(alvo) and not youtube.eh_playlist(alvo):
+                        fala = self._baixar_youtube(alvo, bool(audio))
+                    else:
+                        padrao = youtube.MAX_PLAYLIST if youtube.eh_playlist(alvo) else youtube.MAX_VIDEOS
+                        fala = self._baixar_varios(alvo, quantidade or padrao, bool(audio))
+                except Exception:
+                    log.exception("Falha no painel do YouTube: %s", alvo)
+                    fala = "Não consegui começar esse download, senhor. Veja o registro."
+                self._falar(fala)
+                self._estado_parado()
+
+        threading.Thread(target=rodar, daemon=True).start()
+
     def gerar_pdf(self):
         """Botão PDF: escolher até 100 arquivos e juntar tudo em um PDF."""
         self._ui("nota", self._escolher_para_pdf())

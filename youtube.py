@@ -15,7 +15,7 @@ import yt_dlp
 
 PASTA = os.path.join(os.path.expanduser("~"), "Videos", "Jarvis")
 LIMITE_MINUTOS = 180   # nada de baixar lives de 10 horas por engano
-MAX_VIDEOS = 50        # de uma vez, numa busca
+MAX_VIDEOS = 150       # de uma vez, numa busca
 MAX_PLAYLIST = 200
 PALAVRAS_VAZIAS = {"de", "do", "da", "dos", "das", "o", "a", "os", "as", "um", "uma", "e", "com", "que", "no", "na",
                    "em", "para", "pra", "sobre", "tiver", "tem", "the", "of", "and", "to"}
@@ -115,7 +115,7 @@ def listar(alvo, quantidade=10, so_com_titulo=False):
         origem = alvo
     else:
         # busca mais do que o pedido, porque o filtro de título e o de duração descartam alguns
-        origem = f"ytsearch{min(quantidade * (3 if so_com_titulo else 2), 100)}:{alvo}"
+        origem = f"ytsearch{min(quantidade * (3 if so_com_titulo else 2), 400)}:{alvo}"
     opcoes = {"quiet": True, "no_warnings": True, "extract_flat": "in_playlist", "ignoreerrors": True,
               "noplaylist": not eh_playlist(alvo), "playlistend": MAX_PLAYLIST}
     with yt_dlp.YoutubeDL(opcoes) as ydl:
