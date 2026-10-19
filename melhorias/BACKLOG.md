@@ -33,11 +33,17 @@ Regra: tudo que publica, instala, clica na tela ou apaga pede confirmação ("Co
   "me acorda às 7", "timer de 5 minutos", "quais são meus lembretes", "cancela os lembretes"; ficam só na memória,
   somem se reiniciar); modo foco ("liga o modo foco", "modo foco por 1 hora a cada 20 minutos": lembra de beber água,
   "desliga o modo foco").
+- [x] Ideias do vídeo "Instale o JARVIS no seu PC" (ideias/2026-10-19-0931-...):
+  notícias ("quais as notícias", "notícias de futebol"; Google Notícias por RSS, sem chave, noticias.py);
+  briefing do dia ("faz o briefing", "como está meu dia": data, hora, lembretes, status do PC e 3 manchetes);
+  erros do registro ("quais foram os últimos erros", "o que deu errado": diagnostico.py lê o jarvis.log, mostra no
+  painel e pergunta se pede ao Claude para corrigir, só com confirmação e com backup/desfazer da autoatualização);
+  abrir qualquer programa instalado ("abre o google chrome"): se não está na lista, procura nos atalhos do Menu Iniciar.
 - [x] 4+5. Ver a tela e clicar: já existia (agente_tela.py, "usa a tela e ..."; pânico = mouse no canto superior esquerdo)
 - [x] Já existiam: bot do Telegram, comandos personalizados (meus_comandos.json), segredos no .env
 
 ## Ideias dos vídeos (o Claude lê daqui para atualizar o Jarvis)
-- [ ] ideias/2026-10-19-0931-https-youtu-be-llqcqmerdkm-si-mo46wn-1ym.md (https://youtu.be/lLQCqMErDkM?si=Mo46wn_1ymc-chkJ)
+- [x] ideias/2026-10-19-0931-https-youtu-be-llqcqmerdkm-si-mo46wn-1ym.md (feito: ideias 2, 10 e 11; painel já existia) (https://youtu.be/lLQCqMErDkM?si=Mo46wn_1ymc-chkJ)
 - [x] ideias/2026-10-19-0900-https-youtu-be-llqcqmerdkm-si-4wjvnjrex6.md (feito: ideias 3 e 8; status do PC já existia) (https://youtu.be/lLQCqMErDkM?si=4wjVNJreX6RlzL8z)
 - [ ] ideias/2026-10-19-0857-https-youtu-be-llqcqmerdkm-si-4wjvnjrex6.md (https://youtu.be/lLQCqMErDkM?si=4wjVNJreX6RlzL8z)
 - [ ] ideias/2026-10-19-0827-https-youtu-be-llqcqmerdkm-si-5dxpj0gqre.md (https://youtu.be/lLQCqMErDkM?si=5dxpJ0gqRea3d9r2)

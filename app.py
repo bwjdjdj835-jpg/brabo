@@ -452,6 +452,12 @@ class Jarvis:
             return f"Cancelei {n} lembrete{'s' if n > 1 else ''}, senhor." if n else "Não havia lembretes, senhor."
         if acao == "foco":
             return self._modo_foco(pedido["ligar"], pedido.get("intervalo", 1800), pedido.get("duracao", 0))
+        if acao == "noticias":
+            return self._noticias(pedido.get("assunto", ""))
+        if acao == "briefing":
+            return self._briefing()
+        if acao == "erros":
+            return self._mostrar_erros()
 
         if acao == "config_email":
             enviar_email.preparar()
@@ -793,6 +799,73 @@ class Jarvis:
             return (f"Modo foco ligado por {tempo_falado(duracao)}, senhor. "
                     f"Lembro de beber água a cada {tempo_falado(intervalo)}.")
         return f"Modo foco ligado, senhor. Lembro de beber água a cada {tempo_falado(intervalo)}. Diga desliga o modo foco para parar."
+
+    # ---------- notícias, briefing e erros ----------
+    def _manchetes(self, assunto="", quantidade=5):
+        """Manchetes do Google Notícias; mostra no registro e devolve a lista (vazia se falhar)."""
+        import noticias
+        try:
+            lista = noticias.manchetes(assunto, quantidade)
+        except Exception:
+            log.warning("Não consegui ler as notícias de %r", assunto, exc_info=True)
+            return []
+        for titulo, fonte, _ in lista:
+            self._ui("nota", f"📰 {titulo}" + (f" ({fonte})" if fonte else ""))
+        return lista
+
+    def _noticias(self, assunto):
+        self._ui("atividade", "Lendo as notícias")
+        lista = self._manchetes(assunto, 5)
+        if not lista:
+            return "Não consegui ler as notícias agora, senhor. Pode ser a internet."
+        sobre = f" sobre {assunto}" if assunto else ""
+        return f"As principais notícias{sobre}, senhor: " + ". ".join(t for t, _, _ in lista) + "."
+
+    def _briefing(self):
+        """Resumo do dia: data, hora, lembretes, como está o notebook e três manchetes."""
+        hora = datetime.datetime.now().hour
+        periodo = "Bom dia" if 5 <= hora < 12 else "Boa tarde" if 12 <= hora < 18 else "Boa noite"
+        partes = [f"{periodo}, senhor. {executar('que dia é hoje')} {executar('que horas são')}"]
+        lembretes = sorted((i for i in self._lembretes if i["tipo"] == "lembrete"), key=lambda i: i["quando"])
+        if lembretes:
+            proximo = lembretes[0]
+            partes.append(f"O senhor tem {len(lembretes)} lembrete{'s' if len(lembretes) > 1 else ''}; o próximo é "
+                          f"{proximo['descricao']}, às {time.strftime('%H:%M', time.localtime(proximo['quando']))}.")
+        else:
+            partes.append("Não há lembretes agendados.")
+        partes.append(executar("status do sistema"))
+        lista = self._manchetes("", 3)
+        if lista:
+            partes.append("Nas notícias: " + ". ".join(t for t, _, _ in lista) + ".")
+        return " ".join(partes)
+
+    def _mostrar_erros(self):
+        """Conta os erros recentes do registro e oferece pedir ao Claude para corrigir (com confirmação)."""
+        import diagnostico
+        erros = diagnostico.ultimos_erros(5)
+        if not erros:
+            return "Não encontrei erros nos últimos sete dias do registro, senhor."
+        for erro in erros:
+            vezes = f" ({erro['vezes']} vezes)" if erro["vezes"] > 1 else ""
+            self._ui("nota", f"⚠ {erro['quando']:%d/%m %H:%M} · {erro['mensagem']}{vezes}"
+                             + (f" · {erro['excecao']}" if erro["excecao"] else ""))
+        ultimo = erros[0]
+        fala = (f"Encontrei {len(erros)} tipo{'s' if len(erros) > 1 else ''} de erro recente{'s' if len(erros) > 1 else ''}, "
+                f"estão no registro. O último foi {ultimo['quando']:%d/%m às %H:%M}: "
+                f"{re.sub(r'https?://\S+', 'um link', ultimo['mensagem'])}.")
+        if not claude_code.disponivel() or claude_code.ocupado():
+            return fala
+        pedido = ("Corrija estes erros que apareceram no registro do Jarvis (jarvis.log). Ache a causa no código e "
+                  "conserte só o necessário; se um erro não for do código (microfone desligado, sem internet), "
+                  "apenas deixe a mensagem mais clara ou não mude nada.\n\n"
+                  + "\n\n".join(f"[{e['quando']:%d/%m %H:%M}, {e['vezes']}x]\n{e['trecho']}" for e in erros))
+
+        def corrigir():
+            threading.Thread(target=self._autoatualizar, args=(pedido,), daemon=True).start()
+            return "Começando. Fiz um backup antes e aviso quando terminar, senhor."
+
+        self._pendente = corrigir
+        return fala + " Quer que eu peça ao Claude para corrigir?"
 
     def _modo_tela(self, tarefa):
         """O Jarvis vê a tela e age nela, passo a passo, falando o que faz."""

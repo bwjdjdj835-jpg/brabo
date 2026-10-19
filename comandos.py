@@ -5,6 +5,8 @@ A chave é como você fala (sem acento, minúsculo); o valor é (como ele respon
 """
 import ctypes
 import datetime
+import difflib
+import os
 import random
 import re
 import subprocess
@@ -75,6 +77,8 @@ AJUDA = (
     "Também junto até 100 arquivos em um PDF e baixo vídeos e músicas do YouTube. "
     "Faço lembretes e timers, como: me lembra em 10 minutos de tirar o bolo, e tenho o modo foco, "
     "que lembra o senhor de beber água. "
+    "Leio as notícias, faço o briefing do dia, abro qualquer programa instalado "
+    "e conto os últimos erros do meu registro, oferecendo pedir ao Claude para corrigir. "
     "É só dizer, por exemplo: Jarvis, cria um site de portfólio."
 )
 
@@ -254,6 +258,43 @@ def _com_acentos(busca, t, original):
     return busca
 
 
+_ATALHOS = None  # programas do Menu Iniciar: {nome sem acento: caminho do atalho}
+
+
+def _programas_instalados():
+    """Lê os atalhos do Menu Iniciar uma vez (do usuário e de todos)."""
+    global _ATALHOS
+    if _ATALHOS is None:
+        _ATALHOS = {}
+        pastas = [os.path.join(os.environ.get(base, ""), "Microsoft", "Windows", "Start Menu", "Programs")
+                  for base in ("ProgramData", "APPDATA")]
+        for pasta in pastas:
+            for raiz, _, arquivos in os.walk(pasta):
+                for arquivo in arquivos:
+                    nome, extensao = os.path.splitext(arquivo)
+                    nome = normalizar(nome)
+                    if extensao.lower() in (".lnk", ".url") and not re.search(r"desinstal|uninstall|remov", nome):
+                        _ATALHOS.setdefault(nome, os.path.join(raiz, arquivo))
+    return _ATALHOS
+
+
+def _achar_programa(alvo):
+    """Acha um programa instalado pelo nome falado ("obs", "vlc"). Devolve (nome, atalho) ou None."""
+    alvo = re.sub(r"\b(?:por favor|pra mim|para mim|ai|aqui|agora|programa|aplicativo|app)\b", " ", alvo)
+    alvo = " ".join(alvo.split())
+    if len(alvo) < 2:
+        return None
+    atalhos = _programas_instalados()
+    if alvo in atalhos:
+        return alvo, atalhos[alvo]
+    # nome que começa com o que foi falado ("obs" -> "obs studio"); o mais curto ganha
+    comeca = sorted((n for n in atalhos if re.match(rf"{re.escape(alvo)}\b", n)), key=len)
+    if comeca:
+        return comeca[0], atalhos[comeca[0]]
+    parecido = difflib.get_close_matches(alvo, atalhos, n=1, cutoff=0.8)
+    return (parecido[0], atalhos[parecido[0]]) if parecido else None
+
+
 def _horas():
     agora = datetime.datetime.now()
     h, m = agora.hour, agora.minute
@@ -312,6 +353,23 @@ def executar(comando):
     lembrete = _lembrete(t, original)
     if lembrete is not None:
         return lembrete
+
+    # ----- briefing, notícias e erros do registro (frases curtas) -----
+    curta = len(t.split()) <= 12
+    if curta and tem("briefing", "brifing", "resumo do dia", "meu dia", "me atualiza", "me poe a par"):
+        return {"acao": "briefing"}
+    if curta and tem(r"noticias?", "manchetes?", "jornal") and not tem(r"baix\w*", "video", "videos"):
+        assunto = re.search(r"\b(?:noticias?|manchetes?|jornal)\s+(?:de|do|da|dos|das|sobre)\s+(.+)", t)
+        assunto = _limpar(assunto.group(1), "hoje", "agora", "do dia", "de hoje", r"ultim\w*", "recentes",
+                          "por favor", "pra mim") if assunto else ""
+        if assunto in ("dia", "hoje", "brasil", "agora", ""):
+            assunto = ""
+        return {"acao": "noticias", "assunto": _com_acentos(assunto, t, original) if assunto else ""}
+    if (curta and tem(r"erros?", "deu errado", r"falhas?", r"bugs?")
+            and tem(r"ultim\w*", "quais", "qual", r"mostr\w*", "teve", "algum", "registro", "log", r"corrig\w*",
+                    r"consert\w*", r"arrum\w*", "deu errado", "o que", "tem")
+            and not tem("app", "aplicativo", "site", "projeto", "apk", "email", "pagina", "jogo")):
+        return {"acao": "erros"}
 
     # ----- YouTube: baixar vídeo ou música (antes dos links, senão o link iria para a biblioteca) -----
     link_youtube = re.search(r"https?://(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)/[^\s<>\"]+", comando)
@@ -499,6 +557,11 @@ def executar(comando):
             if nome in alvo:
                 _abrir(endereco)
                 return f"Abrindo {falado}."
+        # não está na lista: procura entre os programas instalados (Menu Iniciar)
+        programa = _achar_programa(alvo)
+        if programa:
+            os.startfile(programa[1])
+            return f"Abrindo {os.path.splitext(os.path.basename(programa[1]))[0]}."
         return f"Ainda não conheço {alvo}, senhor. Dá para me ensinar no arquivo de comandos."
 
     # ----- utilidades -----
