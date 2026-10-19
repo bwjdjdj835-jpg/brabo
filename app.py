@@ -60,7 +60,8 @@ def separar_chamado(texto):
             return texto[palavra.end():].strip(" ,.!?")
     if len(palavras) > 3 and _eh_jarvis(palavras[-1].group()):
         # "baixa os vídeos do Jarvis": aqui "Jarvis" é o assunto, não o chamado
-        if palavras[-2].group() in ("de", "do", "da", "sobre", "tiver", "tenha", "tem", "com", "chamado", "o", "um"):
+        if palavras[-2].group() in ("de", "do", "da", "dos", "sobre", "tiver", "tenha", "tem", "com", "chamado", "o",
+                                    "um", "fazer", "criar", "montar", "programar", "construir"):
             return texto
         return texto[:palavras[-1].start()].strip(" ,.!?")
     return None
@@ -121,8 +122,9 @@ class Jarvis:
         dados = base64.b64decode(conteudo_base64)
         self._guardar(lambda: biblioteca.adicionar_bytes(nome, dados), nome)
 
-    def youtube_painel(self, alvo, quantidade, audio, resumir):
-        """Painel "Baixar do YouTube": link de playlist ou vídeo, ou um texto para buscar."""
+    def youtube_painel(self, alvo, quantidade, audio, modo):
+        """Painel do YouTube: link de playlist ou vídeo, ou um texto para buscar.
+        modo: "baixar", "resumir" (ideias para o Jarvis) ou "relatorio" (PDF no Google Drive)."""
         alvo = (alvo or "").strip()
         if not alvo:
             return
@@ -130,10 +132,13 @@ class Jarvis:
 
         def rodar():
             with self._trava:
-                self._ui("voceDisse", f"{'Resumir' if resumir else 'Baixar'} do YouTube: {alvo}")
+                verbo = {"resumir": "Resumir", "relatorio": "Relatório em PDF"}.get(modo, "Baixar")
+                self._ui("voceDisse", f"{verbo} do YouTube: {alvo}")
                 self._mudar_estado("pensando")
                 try:
-                    if resumir:
+                    if modo == "relatorio":
+                        fala = self._relatorio_youtube(alvo, quantidade or None)
+                    elif modo == "resumir":
                         import autoestudo
                         fala = self._resumir_videos(alvo, min(quantidade or 5, autoestudo.MAX_VIDEOS))
                     elif youtube.eh_link(alvo) and not youtube.eh_playlist(alvo):
@@ -425,6 +430,8 @@ class Jarvis:
             return self._baixar_youtube(pedido["alvo"], pedido["audio"])
         if acao == "youtube_baixar_varios":
             return self._baixar_varios(pedido["alvo"], pedido["quantidade"], pedido["audio"])
+        if acao == "youtube_relatorio":
+            return self._relatorio_youtube(pedido["busca"], pedido.get("quantidade"))
         if acao == "youtube_resumir":
             return self._resumir_videos(pedido["busca"], pedido["quantidade"])
         if acao == "autoatualizar":
@@ -602,6 +609,33 @@ class Jarvis:
             return f"Baixando {tipo} da playlist, senhor. Aviso quando terminar."
         return (f"Vou baixar até {quantidade} {'músicas' if audio else 'vídeos'} com {alvo} no título, senhor. "
                 "Aviso quando terminar.")
+
+    def _relatorio_youtube(self, busca, quantidade=None):
+        """PDF com tudo da playlist (ou busca), resumido pelo Claude, salvo em pdfs/ e no Google Drive."""
+        if not busca:
+            return "De qual playlist, senhor? Cole o link no painel do YouTube ou diga o que buscar."
+
+        def tarefa():
+            import relatorio_youtube
+            self._ui("tarefa", "Relatório do YouTube", busca)
+            try:
+                r = relatorio_youtube.gerar(busca, quantidade, lambda t: self._ui("atividade", t))
+                self._ui("nota", r["drive"] or r["pdf"])
+                subprocess.Popen(["explorer", "/select,", r["drive"] or r["pdf"]])
+                onde = ("Está no seu Google Drive, na pasta Jarvis." if r["drive"] else
+                        "Está na pasta pdfs. Para ir ao Google Drive, abra o Google Drive no computador e entre na sua conta.")
+                fala = f"Pronto, senhor. {r['falado']} {onde}"
+            except Exception as erro:
+                log.exception("Falha no relatório do YouTube: %s", busca)
+                fala = f"Não consegui fazer o relatório, senhor. {str(erro).replace('ERROR: ', '')[:160]}"
+            self._ui("tarefa", None, None)
+            with self._trava:
+                self._falar(fala)
+                self._estado_parado()
+
+        threading.Thread(target=tarefa, daemon=True).start()
+        return ("Vou ler os vídeos e montar o relatório em PDF, senhor. Uma playlist grande leva alguns minutos; "
+                "aviso quando terminar.")
 
     def _resumir_videos(self, busca, quantidade):
         """Lê as legendas dos vídeos, resume com o Claude e guarda as ideias para atualizar o Jarvis."""

@@ -282,7 +282,8 @@
       <div class="yt-linha">
         <input id="yt-qtd" type="number" min="1" max="200" placeholder="Todos" title="Quantos vídeos (busca até 150, playlist até 200). Vazio = todos">
         <label title="Baixar só o áudio, em MP3"><input id="yt-audio" type="checkbox"> MP3</label>
-        <button class="mini" id="yt-resumir" title="Ler as legendas e resumir (até 10 vídeos)">RESUMIR</button>
+        <button class="mini" id="yt-resumir" title="Ler as legendas e guardar ideias para o Jarvis (até 10 vídeos)">RESUMIR</button>
+        <button class="mini" id="yt-pdf" title="Relatório em PDF com tudo da playlist, salvo no Google Drive">PDF</button>
         <button class="mini" id="yt-baixar">BAIXAR</button>
       </div>
     </section>
@@ -805,16 +806,17 @@
   $("#btn-pdf").onclick = () => pywebview.api.gerar_pdf();
 
   // ---------- painel do YouTube: colar o link e baixar ----------
-  function youtube(resumir) {
+  function youtube(modo) {
     const alvo = $("#yt-link").value.trim();
     if (!alvo) { $("#yt-link").focus(); return; }
     const qtd = parseInt($("#yt-qtd").value, 10) || 0;  // 0 = todos (até o limite)
-    pywebview.api.youtube_painel(alvo, qtd, $("#yt-audio").checked, resumir);
+    pywebview.api.youtube_painel(alvo, qtd, $("#yt-audio").checked, modo);
     $("#yt-link").value = "";
   }
-  $("#yt-baixar").onclick = () => youtube(false);
-  $("#yt-resumir").onclick = () => youtube(true);
-  $("#yt-link").addEventListener("keydown", (e) => { if (e.key === "Enter") youtube(false); });
+  $("#yt-baixar").onclick = () => youtube("baixar");
+  $("#yt-resumir").onclick = () => youtube("resumir");
+  $("#yt-pdf").onclick = () => youtube("relatorio");
+  $("#yt-link").addEventListener("keydown", (e) => { if (e.key === "Enter") youtube("baixar"); });
 
   let arrastos = 0;
   addEventListener("dragenter", (e) => { e.preventDefault(); arrastos++; document.body.classList.add("arrastando"); });

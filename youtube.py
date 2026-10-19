@@ -167,11 +167,7 @@ def baixar_varios(alvo, quantidade=10, audio=False, so_com_titulo=True, ao_progr
     videos = listar(alvo, quantidade, so_com_titulo)[:quantidade]
     if not videos:
         raise ValueError(f"Não achei vídeos para '{alvo}'" + (" com isso no título." if so_com_titulo else "."))
-    if eh_playlist(alvo):
-        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "extract_flat": True, "playlistend": 1}) as ydl:
-            nome = (ydl.extract_info(alvo, download=False) or {}).get("title") or "playlist"
-    else:
-        nome = alvo
+    nome = nome_playlist(alvo) if eh_playlist(alvo) else alvo
     pasta = os.path.join(PASTA, _nome_pasta(nome))
     os.makedirs(pasta, exist_ok=True)
 
@@ -228,15 +224,38 @@ def _escolher_legenda(info):
     return None
 
 
-def transcricao(url):
-    """Texto falado no vídeo, pela legenda. Devolve (título, descrição, texto); texto vazio se não houver."""
+def detalhes(url, legenda=True):
+    """Tudo o que dá para saber de um vídeo sem baixar: título, canal, duração, data, views, descrição e,
+    se legenda=True, o texto falado (vazio se o vídeo não tiver legenda)."""
     with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "noplaylist": True, "noprogress": True}) as ydl:
         info = ydl.extract_info(url, download=False) or {}
-        endereco = _escolher_legenda(info)
+        endereco = _escolher_legenda(info) if legenda else None
         texto = ""
         if endereco:
             try:
                 texto = _texto_vtt(ydl.urlopen(endereco).read().decode("utf-8", "replace"))
             except Exception:
                 log.warning("Não consegui a legenda de %s", url, exc_info=True)
-    return info.get("title") or url, (info.get("description") or "")[:1500], texto
+    data = info.get("upload_date") or ""
+    return {
+        "titulo": info.get("title") or url,
+        "url": info.get("webpage_url") or url,
+        "canal": info.get("channel") or info.get("uploader") or "",
+        "duracao": info.get("duration") or 0,
+        "data": f"{data[6:8]}/{data[4:6]}/{data[:4]}" if len(data) == 8 else "",
+        "visualizacoes": info.get("view_count"),
+        "curtidas": info.get("like_count"),
+        "descricao": info.get("description") or "",
+        "texto": texto,
+    }
+
+
+def transcricao(url):
+    """Texto falado no vídeo, pela legenda. Devolve (título, descrição, texto); texto vazio se não houver."""
+    video = detalhes(url)
+    return video["titulo"], video["descricao"][:1500], video["texto"]
+
+
+def nome_playlist(url):
+    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "extract_flat": True, "playlistend": 1}) as ydl:
+        return (ydl.extract_info(url, download=False) or {}).get("title") or "playlist"

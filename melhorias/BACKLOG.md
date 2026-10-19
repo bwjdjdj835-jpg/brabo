@@ -23,5 +23,12 @@ Regra: tudo que publica, instala, clica na tela ou apaga pede confirmação ("Co
 - [x] Autoestudo (autoestudo.py): "resume os vídeos sobre como fazer um jarvis" lê as legendas (até 10 vídeos),
   o Claude resume e salva as ideias em melhorias/ideias/. "Jarvis, se atualiza" (com confirmação): backup no git,
   Claude Code muda o código, compila e importa o app; se quebrar, desfaz sozinho. Depois oferece reiniciar.
+- [x] Relatório do YouTube em PDF (relatorio_youtube.py): botão PDF no painel ou "faz um relatório da playlist <link>".
+  Todos os vídeos (até 200) com dados e descrição; os 10 primeiros com legenda lida; o Claude faz resumo geral,
+  pontos principais e resumo por vídeo. Salva em pdfs/ e copia para Meu Drive\Jarvis\Relatórios do YouTube
+  (google_drive.py acha a pasta do Google Drive para computador sozinho).
 - [x] 4+5. Ver a tela e clicar: já existia (agente_tela.py, "usa a tela e ..."; pânico = mouse no canto superior esquerdo)
 - [x] Já existiam: bot do Telegram, comandos personalizados (meus_comandos.json), segredos no .env
+
+## Ideias dos vídeos (o Claude lê daqui para atualizar o Jarvis)
+- [ ] ideias/2026-10-19-0827-https-youtu-be-llqcqmerdkm-si-5dxpj0gqre.md (https://youtu.be/lLQCqMErDkM?si=5dxpJ0gqRea3d9r2)

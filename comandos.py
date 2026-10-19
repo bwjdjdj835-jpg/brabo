@@ -91,7 +91,7 @@ _PALAVRAS_YOUTUBE = (
     r"(?:os|uns|alguns|varios|varias) ", r"(?:o|um|os) videos?", r"videos?", r"(?:a|uma|as) musicas?", r"musicas?",
     r"(?:o|os) audios?", r"audios?", r"(?:o|os) clipes?", r"clipes?", r"(?:a|essa|esta|da) playlists?", r"playlists?",
     r"que (?:tiver|tenham?|falam?|fala) (?:de |do |da |sobre )?", r"com (?:o nome|o titulo|nome|titulo)",
-    r"no titulo", r"(?:do|da|de|sobre) (?=\w)", "pode", "por favor", r"(?:os )?primeiros?",
+    r"no titulo", r"(?:do|da|de|dos|das|sobre)(?=\s)", "pode", "por favor", r"(?:os )?primeiros?",
 )
 _NUMEROS = {"um": 1, "uma": 1, "dois": 2, "duas": 2, "tres": 3, "quatro": 4, "cinco": 5, "seis": 6, "sete": 7,
             "oito": 8, "nove": 9, "dez": 10, "quinze": 15, "vinte": 20, "trinta": 30, "quarenta": 40, "cinquenta": 50}
@@ -204,6 +204,12 @@ def executar(comando):
     link_youtube = re.search(r"https?://(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)/[^\s<>\"]+", comando)
     sobre_videos = link_youtube or tem("video", "videos", "youtube", "musica", "musicas", "audio", "audios", "mp3",
                                        "clipe", "clipes", "playlist", "playlists")
+    if sobre_videos and tem(r"relatori\w*", "pdf", r"document\w*", "docs", "drive"):
+        alvo = link_youtube.group().rstrip(".,;)!?") if link_youtube else busca_de(
+            t, r"^(?:pode |por favor )?(?:faz|faca|gera|cria|monta|manda|envia|coloca|poe|bota)\w*", r"(?:um|o) relatorio", r"relatori\w*", r"(?:um|o|em) pdf", "pdf",
+            r"(?:um|o) documento", r"document\w*", "google docs", "docs", r"(?:no|pro|para o) google drive",
+            r"(?:no|pro) drive", "drive", "com tudo", "tudo", *_PALAVRAS_YOUTUBE)
+        return {"acao": "youtube_relatorio", "busca": alvo, "quantidade": _quantidade(t, None)}
     if sobre_videos and tem(r"resum\w*", r"estud\w*", r"assist\w*", r"aprend\w*") and not tem(r"baix\w*"):
         alvo = link_youtube.group().rstrip(".,;)!?") if link_youtube else busca_de(t, *_PALAVRAS_YOUTUBE)
         return {"acao": "youtube_resumir", "busca": alvo, "quantidade": _quantidade(t, 5)}
