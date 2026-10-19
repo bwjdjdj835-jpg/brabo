@@ -123,6 +123,87 @@ class Jarvis:
         dados = base64.b64decode(conteudo_base64)
         self._guardar(lambda: biblioteca.adicionar_bytes(nome, dados), nome)
 
+    # ---------- sua linguagem de comandos (meus_comandos.json) ----------
+    def comandos_listar(self):
+        import comandos_usuario
+        return comandos_usuario.listar()
+
+    def _sequencia(self, pedido):
+        """Roda, em ordem, as frases de um comando seu, como se o senhor tivesse falado cada uma."""
+        import comandos_usuario
+        profundidade = pedido.get("_profundidade", 0)
+        self._ui("atividade", f"Comando: {pedido.get('nome', '')}")
+        falas = []
+        for frase in pedido.get("frases", [])[:comandos_usuario.MAX_PASSOS]:
+            self._ui("atividade", f"→ {frase}")
+            try:
+                resposta = executar(frase)
+                if isinstance(resposta, dict):
+                    if resposta.get("acao") in comandos_usuario.ACOES_PROIBIDAS_NA_SEQUENCIA:
+                        log.warning("Sequência pulou %r (não permitido dentro de comandos)", frase)
+                        continue
+                    if resposta.get("acao") == "sequencia":
+                        if profundidade >= 2:  # um comando chamando outro sem fim
+                            log.warning("Sequência parou em %r: comandos demais um dentro do outro", frase)
+                            continue
+                        resposta["_profundidade"] = profundidade + 1
+                    resposta = self._acao(resposta)
+            except Exception:
+                log.exception("Falha no passo %r da sequência", frase)
+                resposta = None
+            if resposta:
+                falas.append(resposta)
+            time.sleep(0.3)  # dá tempo de a interface acompanhar (abas, mini tela)
+        if not falas:
+            return "Feito, senhor."
+        texto = " ".join(falas)
+        return texto if len(texto) < 400 else f"Pronto, senhor. Fiz os {len(falas)} passos do comando."
+
+    def _criar_comando(self, prompt):
+        """O Claude transforma o pedido num comando; o Jarvis lê de volta e só salva se o senhor confirmar."""
+        if len(prompt.split()) < 3:
+            return ("Diga o comando inteiro, senhor. Por exemplo: cria um comando, quando eu disser modo trabalho, "
+                    "abre o gmail na mini tela e liga o modo foco.")
+
+        def trabalho():
+            import comandos_usuario
+            self._ui("atividade", "Transformando o pedido em comando…")
+            comando, motivo = comandos_usuario.criar_do_prompt(prompt)
+            with self._trava:
+                if not comando:
+                    self._falar(f"Não consegui criar esse comando, senhor: {motivo}.")
+                else:
+                    def salvar():
+                        comandos_usuario.salvar(comando)
+                        self._ui("comandos", comandos_usuario.listar())
+                        return f"Comando salvo, senhor. É só dizer: {comando['frases'][0]}."
+                    self._pendente = salvar
+                    self._ui("comandoProposto", comando["frases"], comandos_usuario.descrever(comando))
+                    frases = " ou ".join(comando["frases"][:2]).replace("{", "").replace("}", "")
+                    self._falar(f"Quando o senhor disser {frases}, eu vou: {comandos_usuario.descrever(comando)} "
+                                "Salvo o comando?")
+                self._estado_parado()
+
+        threading.Thread(target=trabalho, daemon=True).start()
+        return "Vou transformar isso num comando, senhor. Um momento."
+
+    def _apagar_comando(self, nome):
+        import comandos_usuario
+        achados = comandos_usuario.buscar(nome)
+        if not achados:
+            return "Não achei esse comando, senhor. Diga: quais são meus comandos, para ouvir a lista."
+        if len(achados) > 1:
+            return "Achei mais de um comando com esse nome, senhor: " + ", ".join(c["frases"][0] for c in achados[:4]) + "."
+        comando = achados[0]
+
+        def apagar():
+            comandos_usuario.remover(comando)
+            self._ui("comandos", comandos_usuario.listar())
+            return "Comando apagado, senhor."
+
+        self._pendente = apagar
+        return f"Vou apagar o comando {comando['frases'][0]}. Confirma?"
+
     # ---------- mini tela: navegador do Jarvis dentro da interface ----------
     def navegador_info(self):
         import navegador
@@ -511,6 +592,20 @@ class Jarvis:
             return self._baixar_youtube(pedido["alvo"], pedido["audio"])
         if acao == "youtube_baixar_varios":
             return self._baixar_varios(pedido["alvo"], pedido["quantidade"], pedido["audio"])
+        if acao == "sequencia":
+            return self._sequencia(pedido)
+        if acao == "comando_criar":
+            return self._criar_comando(pedido["prompt"])
+        if acao == "comando_apagar":
+            return self._apagar_comando(pedido["nome"])
+        if acao == "comando_listar":
+            import comandos_usuario
+            meus = comandos_usuario.listar()
+            self._ui("comandos", meus)
+            if not meus:
+                return "O senhor ainda não tem comandos. Diga, por exemplo: cria um comando, quando eu disser modo trabalho, abre o gmail na mini tela e liga o modo foco."
+            nomes = ", ".join(c["frases"][0] for c in meus[:8])
+            return f"O senhor tem {len(meus)} comando{'s' if len(meus) > 1 else ''}: {nomes}."
         if acao == "navegador_abrir":
             return self._abrir_mini_tela(pedido["alvo"], pedido.get("buscador", "bing"))
         if acao == "navegador_agente":

@@ -166,6 +166,26 @@
   #tarefa-passos li:first-child::before { content: "◆"; animation: pisca .8s infinite; }
   @keyframes pisca { 50% { opacity: .2; } }
 
+  /* ---------- meus comandos ---------- */
+  .cmd-linha { display: flex; gap: 6px; }
+  #cmd-prompt {
+    flex: 1; min-width: 0; padding: 6px 8px; font: inherit; font-size: 13px; color: var(--texto);
+    background: rgba(4, 22, 36, .7); border: 1px solid rgba(56, 225, 255, .35); outline: none; user-select: text;
+  }
+  #cmd-prompt:focus { border-color: var(--cor); }
+  #painel-comandos button.mini { height: 28px; font-size: 9px; }
+  #cmd-proposto { padding: 6px 8px; border: 1px dashed var(--ouro); display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+  #cmd-proposto[hidden] { display: none; }
+  #cmd-proposto b { color: var(--ouro); }
+  #comandos { list-style: none; display: flex; flex-direction: column; gap: 5px; overflow-y: auto; min-height: 40px; flex: 1; }
+  #comandos li { position: relative; font-size: 13px; padding: 4px 22px 4px 7px; background: rgba(255,255,255,.03);
+                 border-left: 2px solid var(--cor); cursor: pointer; }
+  #comandos li b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #comandos li span { display: block; font-size: 11px; opacity: .6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #comandos li i { position: absolute; right: 6px; top: 4px; font-style: normal; opacity: .5; }
+  #comandos li i:hover { opacity: 1; color: #ff5468; }
+  #comandos li.vazia { border: none; opacity: .5; font-size: 12px; cursor: default; padding-right: 7px; }
+
   #biblioteca { list-style: none; display: flex; flex-direction: column; gap: 5px; overflow-y: auto; min-height: 50px; flex: 1; }
   #biblioteca li { font-size: 13px; padding: 4px 7px; background: rgba(255,255,255,.03);
                    border-left: 2px solid rgba(245,192,74,.55); }
@@ -253,9 +273,22 @@
       <canvas id="fluxo"></canvas>
     </section>
 
-    <section class="painel">
+    <section class="painel" style="flex:1">
       <h2>Biblioteca <small><button class="mini" id="btn-anexar" title="Escolher arquivos e fotos">+ ANEXAR</button> <button class="mini" id="btn-pdf" title="Juntar até 100 arquivos em um PDF">PDF</button> <button class="mini" id="btn-dados" title="Seus dados">DADOS</button></small></h2>
       <ul id="biblioteca"><li class="vazia">Arraste arquivos e fotos para a janela, cole um print (Ctrl+V) ou um link.</li></ul>
+    </section>
+
+    <section class="painel" id="painel-comandos" style="flex:1">
+      <h2>Meus comandos <small>SUA LINGUAGEM</small></h2>
+      <div class="cmd-linha">
+        <input id="cmd-prompt" placeholder='Ex.: quando eu disser "modo trabalho", abre o gmail e liga o modo foco' autocomplete="off">
+        <button class="mini" id="cmd-criar" title="O Claude transforma o pedido num comando">CRIAR</button>
+      </div>
+      <div id="cmd-proposto" hidden>
+        <b></b><span></span>
+        <div class="cmd-linha"><button class="mini" id="cmd-salvar">SALVAR</button><button class="mini" id="cmd-cancelar">CANCELAR</button></div>
+      </div>
+      <ul id="comandos"><li class="vazia">Invente um comando acima, ou diga: Jarvis, cria um comando…</li></ul>
     </section>
   </aside>
 
@@ -685,6 +718,37 @@
         $("#tarefa-passos").innerHTML = "";
       }
     },
+    comandos(lista) {
+      const ul = $("#comandos");
+      ul.innerHTML = "";
+      $("#cmd-proposto").hidden = true;
+      if (!lista || !lista.length) {
+        ul.innerHTML = '<li class="vazia">Invente um comando acima, ou diga: Jarvis, cria um comando…</li>';
+        return;
+      }
+      for (const c of lista) {
+        const li = document.createElement("li");
+        const frase = (c.frases || [])[0] || c.nome;
+        const titulo = document.createElement("b");
+        titulo.textContent = `"${frase}"`;
+        const desc = document.createElement("span");
+        desc.textContent = c.descricao || "";
+        const apagar = document.createElement("i");
+        apagar.textContent = "✕";
+        apagar.title = "Apagar comando (pede confirmação)";
+        apagar.onclick = (e) => { e.stopPropagation(); enviar(`apaga o comando ${frase.replace(/[{}]/g, "")}`); };
+        li.title = `${(c.frases || []).join("  |  ")}\n${c.descricao || ""}\nClique para usar`;
+        li.onclick = () => { if (!frase.includes("{")) enviar(frase); else { $("#entrada").value = frase; $("#entrada").focus(); } };
+        li.append(titulo, desc, apagar);
+        ul.append(li);
+      }
+    },
+    comandoProposto(frases, descricao) {
+      const caixa = $("#cmd-proposto");
+      caixa.querySelector("b").textContent = `Novo comando: "${(frases || []).join('" ou "')}"`;
+      caixa.querySelector("span").textContent = descricao || "";
+      caixa.hidden = false;
+    },
     abrirAba(titulo, url, tipo, externo) { abas.abrir(titulo, url, tipo, externo); },
     fecharAba(todas) { todas ? abas.fecharTodas() : abas.fechar(abas.ativa); },
   };
@@ -939,6 +1003,18 @@
   $("#btn-dados").onclick = () => pywebview.api.abrir_meus_dados();
   $("#btn-pdf").onclick = () => pywebview.api.gerar_pdf();
 
+  // ---------- meus comandos: o Claude transforma o pedido em comando; salvar pede confirmação ----------
+  function criarComando() {
+    const texto = $("#cmd-prompt").value.trim();
+    if (!texto) { $("#cmd-prompt").focus(); return; }
+    enviar("cria um comando: " + texto);
+    $("#cmd-prompt").value = "";
+  }
+  $("#cmd-criar").onclick = criarComando;
+  $("#cmd-prompt").addEventListener("keydown", (e) => { if (e.key === "Enter") criarComando(); });
+  $("#cmd-salvar").onclick = () => { $("#cmd-proposto").hidden = true; enviar("sim"); };
+  $("#cmd-cancelar").onclick = () => { $("#cmd-proposto").hidden = true; enviar("não"); };
+
   // ---------- painel do YouTube: colar o link e baixar ----------
   function youtube(modo) {
     const alvo = $("#yt-link").value.trim();
@@ -978,6 +1054,7 @@
     if (iniciar.feito) return;
     iniciar.feito = true;
     pywebview.api.lista_biblioteca().then(jarvis.biblioteca);
+    pywebview.api.comandos_listar().then(jarvis.comandos);
     atualizarStatus();
     setInterval(atualizarStatus, 2000);
     pywebview.api.pronto();

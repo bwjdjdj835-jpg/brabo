@@ -43,6 +43,10 @@ Regra: tudo que publica, instala, clica na tela ou apaga pede confirmação ("Co
   (imagem pelo servidor local com token). Dá para clicar, rolar, digitar e usar ← → ⟳ e endereço. Voz: "abre o g1
   na mini tela", "pesquisa X aqui", "na mini tela, pesquisa X e abre o primeiro resultado" (agente_tela com
   alvo=navegador, mesmos freios), "fecha a mini tela". Logins ficam em navegador_perfil/.
+- [x] Sua linguagem de comandos (comandos_usuario.py + painel Meus comandos): "cria um comando: quando eu disser X,
+  faça Y" -> o Claude transforma em comando (sequência de frases, prompt para o Claude, tarefa na mini tela,
+  responder, abrir site), o Jarvis lê de volta e só salva com "sim". Variáveis: "pesquisa rápida {busca}".
+  "quais são meus comandos", "apaga o comando X" (com confirmação). Recusa comandos que enviam, compram, apagam.
 - [x] Atalho "Jarvis" na Área de Trabalho e no Menu Iniciar (jarvis.ico); se a janela não abrir em 60 s, reabre sozinho.
 - [x] 4+5. Ver a tela e clicar: já existia (agente_tela.py, "usa a tela e ..."; pânico = mouse no canto superior esquerdo)
 - [x] Já existiam: bot do Telegram, comandos personalizados (meus_comandos.json), segredos no .env

@@ -381,9 +381,20 @@ def executar(comando):
     if re.fullmatch(r"(oi|ola|e ai|bom dia|boa tarde|boa noite)", t):
         return "Olá, senhor. Em que posso ajudar?"
 
+    # ----- sua linguagem de comandos: criar, listar e apagar (antes dos próprios comandos) -----
+    if re.search(r"\b(?:cri\w*|invent\w*|faz\w*|faca|adicion\w*|ensin\w*|grav\w*|program\w*)\s+(?:um\s+|uma\s+)?"
+                 r"(?:novo\s+|nova\s+)?(?:comando|atalho de voz)\b|\bnovo comando\b", t):
+        pedido = re.sub(r"^.*?\b(?:comando|atalho de voz)\b[\s,:]*", "", original).strip()
+        return {"acao": "comando_criar", "prompt": pedido}
+    if tem("comando", "comandos") and tem(r"apag\w*", r"remov\w*", r"exclu\w*", r"delet\w*", r"esquec\w*"):
+        nome = re.sub(r"^.*?\bcomandos?\b\s*(?:de |do |da |chamado |que se chama )?", "", t).strip(" '\"")
+        return {"acao": "comando_apagar", "nome": nome}
+    if tem("meus comandos", "seus comandos", "comandos personalizados", "minha linguagem") and not tem(r"abr\w*"):
+        return {"acao": "comando_listar"}
+
     # ----- comandos criados por você (meus_comandos.json): têm prioridade sobre os padrões -----
     import comandos_usuario
-    resposta_usuario = comandos_usuario.tentar(t)
+    resposta_usuario = comandos_usuario.tentar(t, original)
     if resposta_usuario is not None:
         return resposta_usuario
 

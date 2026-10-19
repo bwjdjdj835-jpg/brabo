@@ -1,26 +1,44 @@
 {
   "_ajuda": [
-    "Crie seus comandos aqui. Salve o arquivo e fale o comando: o Jarvis lê de novo sem precisar reiniciar.",
-    "Cada comando tem: 'frases' (o que você fala; basta conter as palavras) e 'acao'.",
+    "Seus comandos: a sua própria linguagem para o Jarvis. Salve o arquivo e fale: vale na hora, sem reiniciar.",
+    "Mais fácil: diga 'Jarvis, cria um comando: quando eu disser X, faça Y' ou use o painel Meus comandos.",
+    "Cada comando tem 'frases' (o que você fala) e 'acao'. Partes variáveis vão entre chaves: 'pesquisa rápida {busca}'.",
     "Tipos de acao:",
-    "  {\"tipo\": \"responder\", \"texto\": \"...\"}            -> ele fala esse texto",
-    "  {\"tipo\": \"abrir\", \"alvo\": \"https://...\"}          -> abre um site ou arquivo",
-    "  {\"tipo\": \"programa\", \"caminho\": \"notepad\", \"args\": []} -> abre um programa (sem comando de terminal)",
-    "  {\"tipo\": \"pasta\", \"caminho\": \"C:\\\\Users\\\\bwjdj\\\\Documents\"} -> abre uma pasta",
-    "Os exemplos abaixo podem ser apagados ou trocados. A linha que começa com _ é só anotação."
+    "  {\"tipo\": \"responder\", \"texto\": \"...\"}                  -> ele fala esse texto",
+    "  {\"tipo\": \"abrir\", \"alvo\": \"https://...\"}                -> abre um site ou arquivo",
+    "  {\"tipo\": \"pasta\", \"caminho\": \"C:\\\\Users\\\\...\"}          -> abre uma pasta",
+    "  {\"tipo\": \"programa\", \"caminho\": \"notepad\", \"args\": []}   -> abre um programa (sem terminal)",
+    "  {\"tipo\": \"comandos\", \"lista\": [\"abre o gmail na mini tela\", \"liga o modo foco\"]} -> vários comandos em sequência",
+    "  {\"tipo\": \"perguntar\", \"texto\": \"prompt para o Claude\"}  -> o Claude responde em voz",
+    "  {\"tipo\": \"mini_tela\", \"tarefa\": \"...\"}                  -> o Jarvis faz a tarefa sozinho na mini tela"
   ],
   "comandos": [
     {
-      "frases": ["abre minha agenda"],
-      "acao": {"tipo": "abrir", "alvo": "https://calendar.google.com"}
+      "frases": [
+        "abre minha agenda"
+      ],
+      "acao": {
+        "tipo": "abrir",
+        "alvo": "https://calendar.google.com"
+      }
     },
     {
-      "frases": ["modo estudo"],
-      "acao": {"tipo": "responder", "texto": "Modo estudo ativado, senhor. Bons estudos."}
+      "frases": [
+        "modo estudo"
+      ],
+      "acao": {
+        "tipo": "responder",
+        "texto": "Modo estudo ativado, senhor. Bons estudos."
+      }
     },
     {
-      "frases": ["abre minhas notas"],
-      "acao": {"tipo": "pasta", "caminho": "C:\\Users\\bwjdj\\Documents"}
+      "frases": [
+        "abre minhas notas"
+      ],
+      "acao": {
+        "tipo": "pasta",
+        "caminho": "C:\\Users\\bwjdj\\Documents"
+      }
     }
   ]
 }
