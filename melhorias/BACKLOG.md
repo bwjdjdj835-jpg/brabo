@@ -37,6 +37,7 @@ Regra: tudo que publica, instala, clica na tela ou apaga pede confirmação ("Co
 - [x] Já existiam: bot do Telegram, comandos personalizados (meus_comandos.json), segredos no .env
 
 ## Ideias dos vídeos (o Claude lê daqui para atualizar o Jarvis)
+- [ ] ideias/2026-10-19-0931-https-youtu-be-llqcqmerdkm-si-mo46wn-1ym.md (https://youtu.be/lLQCqMErDkM?si=Mo46wn_1ymc-chkJ)
 - [x] ideias/2026-10-19-0900-https-youtu-be-llqcqmerdkm-si-4wjvnjrex6.md (feito: ideias 3 e 8; status do PC já existia) (https://youtu.be/lLQCqMErDkM?si=4wjVNJreX6RlzL8z)
 - [ ] ideias/2026-10-19-0857-https-youtu-be-llqcqmerdkm-si-4wjvnjrex6.md (https://youtu.be/lLQCqMErDkM?si=4wjVNJreX6RlzL8z)
 - [ ] ideias/2026-10-19-0827-https-youtu-be-llqcqmerdkm-si-5dxpj0gqre.md (https://youtu.be/lLQCqMErDkM?si=5dxpJ0gqRea3d9r2)
