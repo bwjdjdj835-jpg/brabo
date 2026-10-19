@@ -16,3 +16,4 @@ projetos/*
 .env
 telegram_ids.json
 .claude/
+navegador_perfil/

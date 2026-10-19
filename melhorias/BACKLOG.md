@@ -39,6 +39,11 @@ Regra: tudo que publica, instala, clica na tela ou apaga pede confirmação ("Co
   erros do registro ("quais foram os últimos erros", "o que deu errado": diagnostico.py lê o jarvis.log, mostra no
   painel e pergunta se pede ao Claude para corrigir, só com confirmação e com backup/desfazer da autoatualização);
   abrir qualquer programa instalado ("abre o google chrome"): se não está na lista, procura nos atalhos do Menu Iniciar.
+- [x] Mini tela (navegador.py): Edge invisível controlado pelo Playwright, mostrado ao vivo numa aba da interface
+  (imagem pelo servidor local com token). Dá para clicar, rolar, digitar e usar ← → ⟳ e endereço. Voz: "abre o g1
+  na mini tela", "pesquisa X aqui", "na mini tela, pesquisa X e abre o primeiro resultado" (agente_tela com
+  alvo=navegador, mesmos freios), "fecha a mini tela". Logins ficam em navegador_perfil/.
+- [x] Atalho "Jarvis" na Área de Trabalho e no Menu Iniciar (jarvis.ico); se a janela não abrir em 60 s, reabre sozinho.
 - [x] 4+5. Ver a tela e clicar: já existia (agente_tela.py, "usa a tela e ..."; pânico = mouse no canto superior esquerdo)
 - [x] Já existiam: bot do Telegram, comandos personalizados (meus_comandos.json), segredos no .env
 

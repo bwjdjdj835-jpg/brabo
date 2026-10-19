@@ -8,11 +8,14 @@ import http.server
 import logging
 import os
 import posixpath
+import secrets
 import threading
 import urllib.parse
 
 PASTA = os.path.dirname(os.path.abspath(__file__))
 PASTAS_LIBERADAS = {"interface", "projetos", "pdfs"}
+
+TOKEN = secrets.token_urlsafe(16)
 
 log = logging.getLogger("jarvis")
 _endereco = None
@@ -26,6 +29,27 @@ class _Manipulador(http.server.SimpleHTTPRequestHandler):
         caminho = posixpath.normpath(urllib.parse.unquote(urllib.parse.urlsplit(self.path).path))
         partes = [p for p in caminho.split("/") if p]
         return bool(partes) and partes[0] in PASTAS_LIBERADAS and ".." not in partes
+
+    def do_GET(self):
+        # imagem ao vivo da mini tela; o token impede outros programas e sites de pegarem a imagem
+        if urllib.parse.urlsplit(self.path).path == f"/navegador/{TOKEN}/quadro.jpg":
+            return self._quadro_navegador()
+        return super().do_GET()
+
+    def _quadro_navegador(self):
+        import navegador
+        try:
+            imagem = navegador.quadro()
+        except Exception:
+            imagem = None
+        if not imagem:
+            self.send_error(503)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "image/jpeg")
+        self.send_header("Content-Length", str(len(imagem)))
+        self.end_headers()
+        self.wfile.write(imagem)
 
     def send_head(self):
         if not self._liberado():

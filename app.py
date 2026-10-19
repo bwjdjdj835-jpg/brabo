@@ -123,6 +123,80 @@ class Jarvis:
         dados = base64.b64decode(conteudo_base64)
         self._guardar(lambda: biblioteca.adicionar_bytes(nome, dados), nome)
 
+    # ---------- mini tela: navegador do Jarvis dentro da interface ----------
+    def navegador_info(self):
+        import navegador
+        return {"quadro": f"/navegador/{servidor.TOKEN}/quadro.jpg",
+                "largura": navegador.LARGURA, "altura": navegador.ALTURA}
+
+    def navegador_acao(self, tipo, valor=None, extra=None):
+        """Cliques, rolagem, teclas e endereço vindos da mini tela. Devolve a url e o título atuais."""
+        import navegador
+        try:
+            if tipo == "abrir":
+                navegador.abrir(valor or navegador.INICIO)
+            elif tipo == "clicar":
+                navegador.clicar(float(valor), float(extra))
+            elif tipo == "rolar":
+                navegador.rolar_pixels(int(valor))
+            elif tipo == "tecla":
+                navegador.tecla(str(valor))
+            elif tipo == "digitar":
+                navegador.digitar(str(valor))
+            elif tipo in ("voltar", "avancar", "recarregar"):
+                getattr(navegador, tipo)()
+            return navegador.estado()
+        except Exception as erro:
+            log.warning("Mini tela: falha em %s", tipo, exc_info=True)
+            return {"erro": str(erro)[:200]}
+
+    def _abrir_mini_tela(self, alvo):
+        """Abre um site (ou uma busca) no navegador do Jarvis e mostra a mini tela."""
+        import navegador
+
+        def abrir():
+            self._ui("atividade", "Abrindo na mini tela…")
+            try:
+                navegador.abrir(alvo or navegador.INICIO)
+                self._ui("abrirNavegador")
+            except Exception as erro:
+                log.exception("Falha ao abrir a mini tela: %s", alvo)
+                with self._trava:
+                    self._falar(f"Não consegui abrir a mini tela, senhor. {str(erro)[:120]}")
+                    self._estado_parado()
+
+        threading.Thread(target=abrir, daemon=True).start()
+        if navegador.ligado():
+            return "Abrindo na mini tela, senhor."
+        return "Abrindo na mini tela, senhor. Na primeira vez o navegador leva alguns segundos para ligar."
+
+    def _modo_navegador(self, tarefa):
+        """O Jarvis age sozinho dentro da mini tela (clica, digita, rola), mostrando tudo ao vivo."""
+        if claude_code.ocupado():
+            return "Ainda estou com outra tarefa, senhor. Aguarde eu terminar."
+        if not tarefa.strip():
+            return "O que o senhor quer que eu faça na mini tela?"
+        import navegador
+
+        def trabalho():
+            import agente_tela
+            self._ui("tarefa", "Agindo na mini tela", tarefa)
+            try:
+                navegador.preparar()
+                self._ui("abrirNavegador")
+                deu_certo, resumo = agente_tela.executar_tarefa(
+                    tarefa, lambda fala: self._ui("atividade", fala), alvo=navegador)
+            except Exception:
+                log.exception("Falha no modo mini tela")
+                resumo = "Não consegui agir na mini tela, senhor."
+            self._ui("tarefa", None, None)
+            with self._trava:
+                self._falar(resumo)
+                self._estado_parado()
+
+        threading.Thread(target=trabalho, daemon=True).start()
+        return "Entendido, senhor. Vou fazer isso na mini tela; o senhor pode acompanhar ao vivo."
+
     def youtube_painel(self, alvo, quantidade, audio, modo):
         """Painel do YouTube: link de playlist ou vídeo, ou um texto para buscar.
         modo: "baixar", "resumir" (ideias para o Jarvis) ou "relatorio" (PDF no Google Drive)."""
@@ -437,6 +511,15 @@ class Jarvis:
             return self._baixar_youtube(pedido["alvo"], pedido["audio"])
         if acao == "youtube_baixar_varios":
             return self._baixar_varios(pedido["alvo"], pedido["quantidade"], pedido["audio"])
+        if acao == "navegador_abrir":
+            return self._abrir_mini_tela(pedido["alvo"])
+        if acao == "navegador_agente":
+            return self._modo_navegador(pedido["tarefa"])
+        if acao == "navegador_fechar":
+            import navegador
+            self._ui("fecharNavegador")
+            navegador.desligar()
+            return "Fechei a mini tela, senhor."
         if acao == "youtube_relatorio":
             return self._relatorio_youtube(pedido["busca"], pedido.get("quantidade"))
         if acao == "youtube_resumir":

@@ -34,6 +34,13 @@ INSTRUCOES = (
     "usuário precisa terminar esse passo. Quando a tarefa for cumprida, use acao 'concluir' com um resumo útil."
 )
 
+INSTRUCOES_NAVEGADOR = INSTRUCOES + (
+    "\nVocê está operando a MINI TELA do Jarvis: um navegador Edge de 1280 por 800 pixels (a foto é a página "
+    "inteira visível, sem barra de endereço). Há uma ação a mais: 'abrir', com o campo \"url\" (um endereço como "
+    "https://... ou um texto para buscar no Google). Use 'abrir' em vez de procurar uma barra de endereço. "
+    "Junto com cada foto vêm o endereço e o título da página atual."
+)
+
 log = logging.getLogger("jarvis")
 
 
@@ -48,23 +55,30 @@ def _extrair_json(texto):
         return None
 
 
-def executar_tarefa(tarefa, ao_evento=None):
-    """Roda a tarefa no modo tela. Devolve (deu_certo, resumo)."""
-    tela.preparar()
+def executar_tarefa(tarefa, ao_evento=None, alvo=None):
+    """Roda a tarefa no modo tela (alvo=tela, a tela inteira) ou na mini tela (alvo=navegador).
+    Devolve (deu_certo, resumo)."""
+    alvo = alvo or tela
+    navegador = hasattr(alvo, "abrir")
+    instrucoes = INSTRUCOES_NAVEGADOR if navegador else INSTRUCOES
+    alvo.preparar()
     historico = []
     for passo in range(1, MAX_PASSOS + 1):
-        caminho, largura, altura = tela.capturar()
+        caminho, largura, altura = alvo.capturar()
         pasta_foto = os.path.dirname(caminho)
         contexto = ""
         if historico:
             contexto = "Ações já feitas: " + "; ".join(historico[-6:]) + ".\n"
+        if navegador:
+            pagina = alvo.estado()
+            contexto += f"Página atual: {pagina['titulo']} ({pagina['url']}).\n"
         pedido = (
             f"Tarefa do usuário: {tarefa}\n"
             f"{contexto}"
             f"A foto {os.path.basename(caminho)} tem {largura} por {altura} pixels. "
             f"Passo {passo} de no máximo {MAX_PASSOS}. Qual a próxima ação?"
         )
-        deu_certo, resposta = claude_code.passo_visao(pedido, INSTRUCOES, pasta_foto)
+        deu_certo, resposta = claude_code.passo_visao(pedido, instrucoes, pasta_foto)
         acao = _extrair_json(resposta or "")
         if not acao:
             log.warning("Modo tela: resposta sem JSON: %s", (resposta or "")[:200])
@@ -79,30 +93,32 @@ def executar_tarefa(tarefa, ao_evento=None):
             return True, acao.get("resumo") or "Pronto, senhor."
 
         try:
-            _fazer(acao)
+            _fazer(acao, alvo)
         except Exception:
             log.exception("Falha ao executar a ação na tela")
             return False, "Tentei agir na tela mas algo deu errado, senhor."
-        historico.append(f"{acao.get('acao')} {acao.get('texto') or acao.get('tecla') or ''}".strip())
+        historico.append(f"{acao.get('acao')} {acao.get('texto') or acao.get('tecla') or acao.get('url') or ''}".strip())
 
     return True, "Cheguei ao limite de passos, senhor. Veja como ficou a tela."
 
 
-def _fazer(acao):
+def _fazer(acao, alvo=tela):
     tipo = acao.get("acao")
     x, y = acao.get("x", 0), acao.get("y", 0)
     if tipo == "clicar":
-        tela.clicar(x, y)
+        alvo.clicar(x, y)
     elif tipo == "duplo":
-        tela.clicar(x, y, duplo=True)
+        alvo.clicar(x, y, duplo=True)
     elif tipo == "clique_direito":
-        tela.clicar(x, y, botao="right")
+        alvo.clicar(x, y, botao="right")
     elif tipo == "digitar":
-        tela.digitar(acao.get("texto", ""))
+        alvo.digitar(acao.get("texto", ""))
     elif tipo == "tecla":
-        tela.tecla(acao.get("tecla", "enter"))
+        alvo.tecla(acao.get("tecla", "enter"))
     elif tipo == "rolar":
-        tela.rolar(acao.get("cliques", -3))
+        alvo.rolar(acao.get("cliques", -3))
+    elif tipo == "abrir" and hasattr(alvo, "abrir"):
+        alvo.abrir(acao.get("url") or acao.get("texto") or "")
     elif tipo == "esperar":
         import time
         time.sleep(1.5)

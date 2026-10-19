@@ -75,6 +75,7 @@ AJUDA = (
     "dizer as horas e a data, controlar o volume e mostrar o status do sistema. "
     "Com o Claude, eu crio apps e sites para o senhor e respondo qualquer pergunta. "
     "Também junto até 100 arquivos em um PDF e baixo vídeos e músicas do YouTube. "
+    "Abro sites na minha mini tela, como: abre o g1 na mini tela, e faço coisas nela para o senhor. "
     "Faço lembretes e timers, como: me lembra em 10 minutos de tirar o bolo, e tenho o modo foco, "
     "que lembra o senhor de beber água. "
     "Leio as notícias, faço o briefing do dia, abro qualquer programa instalado "
@@ -207,6 +208,41 @@ def _lembrete(t, original):
     texto = _com_acentos(resto, t, original) if len(resto) > 2 else ""
     quando = f"às {horario}" if horario else f"daqui a {tempo_falado(segundos)}"
     return {"acao": "lembrete", "segundos": segundos, "texto": texto, "timer": eh_timer and not texto, "quando": quando}
+
+
+_MINI = (r"(?:(?:na|a|da|no|o|do|pela|pelo|pra|pro|para a|para o)\s+)?(?:mini\s?tela|navegador do jarvis|tela do jarvis)"
+         r"|dentro do jarvis|aqui dentro")
+_VERBO_ABRIR = r"(?:abr\w*|entr\w*|vai|acess\w*|mostr\w*|carreg\w*)"
+_VERBO_BUSCAR = r"(?:pesquis\w*|procur\w*|busc\w*|googl\w*)"
+
+
+def _mini_tela(t, original):
+    """Abrir site ou pesquisa na mini tela, pedir para o Jarvis agir nela, ou fechá-la. None se não for isso."""
+    citou = re.search(rf"\b(?:{_MINI})\b", t)
+    no_fim = re.search(rf"\s+(?:{_MINI}|aqui)$", t)
+    if citou and re.search(r"\b(?:fech\w*|deslig\w*|encerr\w*|sai\w*)\b", t):
+        return {"acao": "navegador_fechar"}
+    if not (citou or no_fim):
+        return None
+    pedido = re.sub(rf"\s*,?\s*\b(?:{_MINI})\b\s*,?\s*", " ", t)
+    pedido = re.sub(r"\s+aqui$", "", pedido).strip(" ,.:")
+    pedido = re.sub(r"^(?:pode\s+|por favor\s+)+", "", pedido)
+    if not pedido or re.fullmatch(rf"{_VERBO_ABRIR}(?:\s+(?:a|o))?", pedido):
+        return {"acao": "navegador_abrir", "alvo": ""}  # "abre a mini tela"
+    simples = " e " not in f" {pedido} " and len(pedido.split()) <= 8
+    abrir = re.match(rf"{_VERBO_ABRIR}\s+(?:(?:o|a|em|no|na|para|pra|pro|site|pagina|do|da)\s+)*(.+)", pedido)
+    if abrir and simples:
+        alvo = abrir.group(1)
+        for nome, (_falado, endereco) in SITES.items():
+            if alvo in (nome, f"o {nome}") or alvo.startswith(nome + " "):
+                return {"acao": "navegador_abrir", "alvo": endereco}
+        return {"acao": "navegador_abrir", "alvo": _com_acentos(alvo, t, original)}
+    buscar = re.match(rf"{_VERBO_BUSCAR}\s+(?:(?:por|sobre|no google)\s+)?(.+)", pedido)
+    if buscar and simples:
+        return {"acao": "navegador_abrir", "alvo": _com_acentos(buscar.group(1), t, original)}
+    if not citou:
+        return None  # "... aqui" no fim de outra frase (ex.: "toca coldplay aqui") não é mini tela
+    return {"acao": "navegador_agente", "tarefa": _com_acentos(pedido, t, original)}
 
 
 def _quantidade(t, padrao):
@@ -370,6 +406,11 @@ def executar(comando):
                     r"consert\w*", r"arrum\w*", "deu errado", "o que", "tem")
             and not tem("app", "aplicativo", "site", "projeto", "apk", "email", "pagina", "jogo")):
         return {"acao": "erros"}
+
+    # ----- mini tela: navegador do Jarvis dentro da interface (antes do modo tela: "na tela do jarvis") -----
+    mini = _mini_tela(t, original)
+    if mini is not None:
+        return mini
 
     # ----- YouTube: baixar vídeo ou música (antes dos links, senão o link iria para a biblioteca) -----
     link_youtube = re.search(r"https?://(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)/[^\s<>\"]+", comando)

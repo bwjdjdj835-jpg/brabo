@@ -107,11 +107,28 @@
   #abas .aba i:hover { opacity: 1; color: var(--cor); }
   #paginas { position: absolute; inset: 0; z-index: 5; display: none; }
   #paginas.visivel { display: block; }
-  #paginas iframe {
+  #paginas > * {
     position: absolute; inset: 0; width: 100%; height: 100%; border: 1px solid var(--cor); background: #000;
     box-shadow: 0 0 24px rgba(56, 225, 255, .25); display: none;
   }
-  #paginas iframe.ativa { display: block; }
+  #paginas > .ativa { display: block; }
+
+  /* ---------- mini tela: navegador do Jarvis ao vivo ---------- */
+  #paginas > .mini-tela.ativa { display: flex; flex-direction: column; background: #02080e; }
+  .mini-barra { display: flex; gap: 6px; padding: 6px; border-bottom: 1px solid rgba(56, 225, 255, .3); }
+  .mini-barra button { height: 30px; padding: 0 10px; font-size: 13px; letter-spacing: 0; }
+  .mini-barra input {
+    flex: 1; min-width: 0; padding: 0 10px; font: inherit; font-size: 14px; color: var(--texto);
+    background: rgba(4, 22, 36, .8); border: 1px solid rgba(56, 225, 255, .35); outline: none; user-select: text;
+  }
+  .mini-barra input:focus { border-color: var(--cor); }
+  .mini-area { position: relative; flex: 1; min-height: 0; outline: none; cursor: pointer; }
+  .mini-area:focus { box-shadow: inset 0 0 0 1px var(--ouro); }
+  .mini-area img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .mini-aviso {
+    position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); padding: 3px 10px;
+    font-size: 12px; background: rgba(2, 10, 18, .85); border: 1px solid rgba(56, 225, 255, .3); pointer-events: none;
+  }
   #orb3d { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
   #bolha {
     position: absolute; left: 50%; top: 50%; z-index: 2;
@@ -676,16 +693,21 @@
     lista: [],          // {id, titulo, url, tipo, externo, botao, quadro}
     ativa: "jarvis",
     MAX: 6,
-    ICONES: { youtube: "▶", projeto: "◆", pdf: "📄", site: "🌐" },
+    ICONES: { youtube: "▶", projeto: "◆", pdf: "📄", site: "🌐", navegador: "🖥" },
     abrir(titulo, url, tipo = "site", externo = null) {
       const existente = this.lista.find((a) => a.url === url);
       if (existente) return this.mostrar(existente.id);
-      if (this.lista.length >= this.MAX) this.fechar(this.lista[0].id);
+      if (this.lista.length >= this.MAX) this.fechar(this.lista.find((a) => a.tipo !== "navegador").id);
       const id = "aba" + Date.now();
-      const quadro = document.createElement("iframe");
-      quadro.src = url;
-      quadro.allow = "autoplay; encrypted-media; fullscreen; picture-in-picture; clipboard-write";
-      quadro.allowFullscreen = true;
+      let quadro;
+      if (tipo === "navegador") {
+        quadro = mini.criar();
+      } else {
+        quadro = document.createElement("iframe");
+        quadro.src = url;
+        quadro.allow = "autoplay; encrypted-media; fullscreen; picture-in-picture; clipboard-write";
+        quadro.allowFullscreen = true;
+      }
       $("#paginas").append(quadro);
       const botao = document.createElement("button");
       botao.className = "aba";
@@ -695,7 +717,10 @@
       const fora = document.createElement("i");
       fora.textContent = "↗";
       fora.title = "Abrir no navegador";
-      fora.onclick = (e) => { e.stopPropagation(); pywebview.api.abrir_no_navegador(externo || url); };
+      fora.onclick = (e) => {
+        e.stopPropagation();
+        pywebview.api.abrir_no_navegador(tipo === "navegador" ? mini.url : (externo || url));
+      };
       const fechar = document.createElement("i");
       fechar.textContent = "✕";
       fechar.title = "Fechar aba";
@@ -720,7 +745,7 @@
       const i = this.lista.findIndex((a) => a.id === id);
       if (i < 0) return this.mostrar("jarvis");
       const [aba] = this.lista.splice(i, 1);
-      aba.quadro.src = "about:blank";  // para o vídeo na hora
+      if (aba.quadro.tagName === "IFRAME") aba.quadro.src = "about:blank";  // para o vídeo na hora
       aba.quadro.remove();
       aba.botao.remove();
       this.mostrar(this.ativa === id ? (this.lista[this.lista.length - 1]?.id || "jarvis") : this.ativa);
@@ -732,6 +757,114 @@
   abas.botaoJarvis.innerHTML = "<span>◉ JARVIS</span>";
   abas.botaoJarvis.onclick = () => abas.mostrar("jarvis");
   $("#abas").append(abas.botaoJarvis);
+
+  // ---------- mini tela: o navegador do Jarvis (Edge invisível) mostrado ao vivo ----------
+  // A imagem vem do servidor local; cliques, rolagem e teclas voltam para o Python, em ordem.
+  const mini = {
+    info: null, url: "", el: null, img: null, rodando: false, fila: Promise.resolve(),
+    URL_ABA: "jarvis://mini-tela",
+    aba() { return abas.lista.find((a) => a.tipo === "navegador"); },
+    criar() {
+      const el = document.createElement("div");
+      el.className = "mini-tela";
+      el.innerHTML = `
+        <div class="mini-barra">
+          <button data-a="voltar" title="Voltar">←</button>
+          <button data-a="avancar" title="Avançar">→</button>
+          <button data-a="recarregar" title="Recarregar">⟳</button>
+          <input class="mini-url" placeholder="Endereço ou o que pesquisar" autocomplete="off">
+          <button class="mini-ir">IR</button>
+        </div>
+        <div class="mini-area" tabindex="0" title="Clique para usar o site. Com a mini tela selecionada, o teclado digita nela.">
+          <img alt="">
+          <div class="mini-aviso">Ligando o navegador…</div>
+        </div>`;
+      this.el = el;
+      this.img = el.querySelector("img");
+      const area = el.querySelector(".mini-area");
+      const url = el.querySelector(".mini-url");
+      el.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => this.acao(b.dataset.a)));
+      const ir = () => { if (url.value.trim()) this.acao("abrir", url.value.trim()); area.focus(); };
+      el.querySelector(".mini-ir").onclick = ir;
+      url.addEventListener("keydown", (e) => { if (e.key === "Enter") ir(); });
+      area.addEventListener("mousedown", (e) => {
+        const p = this.ponto(e);
+        if (p) this.acao("clicar", p.x, p.y);
+      });
+      let rolagem = 0, agendada = false;
+      area.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        rolagem += e.deltaY;
+        if (agendada) return;
+        agendada = true;
+        setTimeout(() => { this.acao("rolar", Math.round(rolagem)); rolagem = 0; agendada = false; }, 120);
+      }, { passive: false });
+      area.addEventListener("keydown", (e) => {
+        if (["Control", "Shift", "Alt", "Meta"].includes(e.key) || e.key === "F11") return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) return this.acao("digitar", e.key);
+        const partes = [e.ctrlKey && "Control", e.altKey && "Alt", e.shiftKey && e.key.length > 1 && "Shift"]
+          .filter(Boolean);
+        this.acao("tecla", [...partes, e.key.length === 1 ? e.key.toLowerCase() : e.key].join("+"));
+      });
+      area.addEventListener("paste", (e) => {
+        const texto = e.clipboardData?.getData("text");
+        if (texto) { e.preventDefault(); e.stopPropagation(); this.acao("digitar", texto); }
+      });
+      return el;
+    },
+    // posição do clique na página real (1280x800), descontando as faixas pretas do object-fit: contain
+    ponto(e) {
+      if (!this.info || !this.img.naturalWidth) return null;
+      const r = this.img.getBoundingClientRect();
+      const escala = Math.min(r.width / this.info.largura, r.height / this.info.altura);
+      const x = (e.clientX - r.left - (r.width - this.info.largura * escala) / 2) / escala;
+      const y = (e.clientY - r.top - (r.height - this.info.altura * escala) / 2) / escala;
+      if (x < 0 || y < 0 || x > this.info.largura || y > this.info.altura) return null;
+      return { x: Math.round(x), y: Math.round(y) };
+    },
+    acao(tipo, valor = null, extra = null) {
+      this.fila = this.fila
+        .then(() => pywebview.api.navegador_acao(tipo, valor, extra))
+        .then((estado) => this.atualizar(estado))
+        .catch(() => {});
+    },
+    atualizar(estado) {
+      if (!estado || estado.erro) return;
+      this.url = estado.url || this.url;
+      const campo = this.el?.querySelector(".mini-url");
+      if (campo && document.activeElement !== campo) campo.value = this.url;
+      const aba = this.aba();
+      if (aba && estado.titulo) aba.botao.querySelector("span").textContent = `🖥 ${estado.titulo}`;
+    },
+    // pede a próxima imagem só depois que a anterior chegou, e só com a aba visível
+    quadros() {
+      if (this.rodando) return;
+      this.rodando = true;
+      const aviso = () => this.el?.querySelector(".mini-aviso");
+      const proximo = () => {
+        const aba = this.aba();
+        if (!aba) { this.rodando = false; return; }
+        if (abas.ativa !== aba.id) { setTimeout(proximo, 500); return; }
+        this.img.src = `${this.info.quadro}?t=${Date.now()}`;
+      };
+      this.img.onload = () => { aviso() && aviso().remove(); setTimeout(proximo, 100); };
+      this.img.onerror = () => setTimeout(proximo, 800);
+      proximo();
+    },
+    async abrir() {
+      if (!this.info) this.info = await pywebview.api.navegador_info();
+      if (!this.aba()) abas.abrir("Mini tela", this.URL_ABA, "navegador");
+      else abas.mostrar(this.aba().id);
+      this.quadros();
+      this.acao("estado");
+      this.el.querySelector(".mini-area").focus();
+    },
+    fechar() { const aba = this.aba(); if (aba) abas.fechar(aba.id); },
+  };
+  jarvis.abrirNavegador = () => mini.abrir();
+  jarvis.fecharNavegador = () => mini.fechar();
 
   // ---------- painel do sistema ----------
   async function atualizarStatus() {
