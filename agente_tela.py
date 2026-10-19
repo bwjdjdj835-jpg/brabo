@@ -37,7 +37,8 @@ INSTRUCOES = (
 INSTRUCOES_NAVEGADOR = INSTRUCOES + (
     "\nVocê está operando a MINI TELA do Jarvis: um navegador Edge de 1280 por 800 pixels (a foto é a página "
     "inteira visível, sem barra de endereço). Há uma ação a mais: 'abrir', com o campo \"url\" (um endereço como "
-    "https://... ou um texto para buscar no Google). Use 'abrir' em vez de procurar uma barra de endereço. "
+    "https://... ou um texto para buscar no Bing, a busca da Microsoft). Use 'abrir' em vez de procurar uma "
+    "barra de endereço. "
     "Junto com cada foto vêm o endereço e o título da página atual."
 )
 

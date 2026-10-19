@@ -22,7 +22,11 @@ PASTA = os.path.dirname(os.path.abspath(__file__))
 PERFIL = os.path.join(PASTA, "navegador_perfil")
 CAPTURA = os.path.join(os.environ.get("TEMP", PASTA), "jarvis_navegador", "jarvis_tela.png")
 LARGURA, ALTURA = 1280, 800
-INICIO = "https://www.google.com"
+# Busca da Microsoft (Bing): combina com o Edge e quase não pede "não sou um robô" para navegador automático,
+# ao contrário do Google. Para usar o Google, diga "pesquisa no google X na mini tela".
+INICIO = "https://www.bing.com"
+BUSCAS = {"bing": "https://www.bing.com/search?q=", "google": "https://www.google.com/search?q=",
+          "youtube": "https://www.youtube.com/results?search_query="}
 
 log = logging.getLogger("jarvis")
 _fila = queue.Queue()
@@ -90,14 +94,14 @@ def _desligar():
 
 
 # ---------- endereços ----------
-def endereco(texto):
-    """"g1.com.br" -> https://g1.com.br; "receita de bolo" -> busca no Google; link completo fica igual."""
+def endereco(texto, buscador="bing"):
+    """"g1.com.br" -> https://g1.com.br; "receita de bolo" -> busca no Bing; link completo fica igual."""
     texto = texto.strip()
     if re.match(r"https?://", texto):
         return texto
     if re.fullmatch(r"[\w.-]+\.[a-z]{2,}(?:/\S*)?", texto, re.I) and " " not in texto:
         return "https://" + texto
-    return "https://www.google.com/search?q=" + urllib.parse.quote_plus(texto)
+    return BUSCAS.get(buscador, BUSCAS["bing"]) + urllib.parse.quote_plus(texto)
 
 
 # ---------- ações (as mesmas do modo tela, para o agente_tela usar) ----------
@@ -109,7 +113,7 @@ def preparar():
     _rodar(_pagina)
 
 
-def abrir(texto=INICIO):
+def abrir(texto=INICIO, buscador="bing"):
     def _abrir(url):
         pagina = _pagina()
         try:
@@ -117,7 +121,7 @@ def abrir(texto=INICIO):
         except Exception as erro:  # página lenta: mostra o que já carregou
             log.warning("Navegador: %s demorou para abrir (%s)", url, erro)
         return pagina.url
-    return _rodar(_abrir, endereco(texto or INICIO))
+    return _rodar(_abrir, endereco(texto or INICIO, buscador))
 
 
 def clicar(x, y, duplo=False, botao="left"):

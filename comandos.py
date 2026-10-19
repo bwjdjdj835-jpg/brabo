@@ -218,6 +218,10 @@ _VERBO_BUSCAR = r"(?:pesquis\w*|procur\w*|busc\w*|googl\w*)"
 
 def _mini_tela(t, original):
     """Abrir site ou pesquisa na mini tela, pedir para o Jarvis agir nela, ou fechá-la. None se não for isso."""
+    # "pesquisa no bing X" / "pesquisa na microsoft X": a busca da Microsoft sempre abre na mini tela
+    microsoft = re.search(rf"^(?:pode\s+)?{_VERBO_BUSCAR}\s+(?:no bing|na microsoft|no edge)\s+(?:por\s+|sobre\s+)?(.+)", t)
+    if microsoft:
+        return {"acao": "navegador_abrir", "alvo": _com_acentos(microsoft.group(1), t, original), "buscador": "bing"}
     citou = re.search(rf"\b(?:{_MINI})\b", t)
     no_fim = re.search(rf"\s+(?:{_MINI}|aqui)$", t)
     if citou and re.search(r"\b(?:fech\w*|deslig\w*|encerr\w*|sai\w*)\b", t):
@@ -237,9 +241,11 @@ def _mini_tela(t, original):
             if alvo in (nome, f"o {nome}") or alvo.startswith(nome + " "):
                 return {"acao": "navegador_abrir", "alvo": endereco}
         return {"acao": "navegador_abrir", "alvo": _com_acentos(alvo, t, original)}
-    buscar = re.match(rf"{_VERBO_BUSCAR}\s+(?:(?:por|sobre|no google)\s+)?(.+)", pedido)
+    buscar = re.match(rf"{_VERBO_BUSCAR}\s+(?:(no google|no youtube|no bing|na microsoft)\s+)?(?:(?:por|sobre)\s+)?(.+)",
+                      pedido)
     if buscar and simples:
-        return {"acao": "navegador_abrir", "alvo": _com_acentos(buscar.group(1), t, original)}
+        buscador = {"no google": "google", "no youtube": "youtube"}.get(buscar.group(1), "bing")
+        return {"acao": "navegador_abrir", "alvo": _com_acentos(buscar.group(2), t, original), "buscador": buscador}
     if not citou:
         return None  # "... aqui" no fim de outra frase (ex.: "toca coldplay aqui") não é mini tela
     return {"acao": "navegador_agente", "tarefa": _com_acentos(pedido, t, original)}

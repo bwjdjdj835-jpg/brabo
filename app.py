@@ -150,14 +150,14 @@ class Jarvis:
             log.warning("Mini tela: falha em %s", tipo, exc_info=True)
             return {"erro": str(erro)[:200]}
 
-    def _abrir_mini_tela(self, alvo):
-        """Abre um site (ou uma busca) no navegador do Jarvis e mostra a mini tela."""
+    def _abrir_mini_tela(self, alvo, buscador="bing"):
+        """Abre um site (ou uma busca, no Bing por padrão) no navegador do Jarvis e mostra a mini tela."""
         import navegador
 
         def abrir():
             self._ui("atividade", "Abrindo na mini tela…")
             try:
-                navegador.abrir(alvo or navegador.INICIO)
+                navegador.abrir(alvo or navegador.INICIO, buscador)
                 self._ui("abrirNavegador")
             except Exception as erro:
                 log.exception("Falha ao abrir a mini tela: %s", alvo)
@@ -512,7 +512,7 @@ class Jarvis:
         if acao == "youtube_baixar_varios":
             return self._baixar_varios(pedido["alvo"], pedido["quantidade"], pedido["audio"])
         if acao == "navegador_abrir":
-            return self._abrir_mini_tela(pedido["alvo"])
+            return self._abrir_mini_tela(pedido["alvo"], pedido.get("buscador", "bing"))
         if acao == "navegador_agente":
             return self._modo_navegador(pedido["tarefa"])
         if acao == "navegador_fechar":
