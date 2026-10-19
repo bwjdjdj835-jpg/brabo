@@ -127,7 +127,10 @@ def listar(alvo, quantidade=10, so_com_titulo=False):
         origem = alvo
     else:
         # busca mais do que o pedido, porque o filtro de título e o de duração descartam alguns
-        origem = f"ytsearch{min(quantidade * (3 if so_com_titulo else 2), 400)}:{alvo}"
+        # e sem o "ruído" da frase: colchetes, "ou", "título parecido"...
+        palavras = [p for p in re.findall(r"\w+", alvo) if _sem_acento(p) not in PALAVRAS_VAZIAS]
+        busca = " ".join(dict.fromkeys(palavras)) or alvo
+        origem = f"ytsearch{min(quantidade * (3 if so_com_titulo else 2), 400)}:{busca}"
     opcoes = {"quiet": True, "no_warnings": True, "extract_flat": "in_playlist", "ignoreerrors": True,
               "noplaylist": not eh_playlist(alvo), "playlistend": MAX_PLAYLIST}
     with yt_dlp.YoutubeDL(opcoes) as ydl:
