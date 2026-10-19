@@ -13,6 +13,7 @@ import logging
 import platform
 import re
 import subprocess
+import sys
 import threading
 import time
 import urllib.parse
@@ -58,6 +59,9 @@ def separar_chamado(texto):
         if _eh_jarvis(palavra.group()):
             return texto[palavra.end():].strip(" ,.!?")
     if len(palavras) > 3 and _eh_jarvis(palavras[-1].group()):
+        # "baixa os vídeos do Jarvis": aqui "Jarvis" é o assunto, não o chamado
+        if palavras[-2].group() in ("de", "do", "da", "sobre", "tiver", "tenha", "tem", "com", "chamado", "o", "um"):
+            return texto
         return texto[:palavras[-1].start()].strip(" ,.!?")
     return None
 
@@ -391,6 +395,12 @@ class Jarvis:
             return "Fechei, senhor." if not pedido.get("todas") else "Fechei todas as abas, senhor."
         if acao == "youtube_baixar":
             return self._baixar_youtube(pedido["alvo"], pedido["audio"])
+        if acao == "youtube_baixar_varios":
+            return self._baixar_varios(pedido["alvo"], pedido["quantidade"], pedido["audio"])
+        if acao == "youtube_resumir":
+            return self._resumir_videos(pedido["busca"], pedido["quantidade"])
+        if acao == "autoatualizar":
+            return self._preparar_autoatualizacao(pedido["pedido"])
 
         if acao == "config_email":
             enviar_email.preparar()
@@ -524,6 +534,116 @@ class Jarvis:
 
         threading.Thread(target=tarefa, daemon=True).start()
         return f"Baixando {tipo} {alvo if not alvo.startswith('http') else 'do link'}, senhor. Aviso quando terminar."
+
+    def _baixar_varios(self, alvo, quantidade, audio):
+        """Playlist inteira ou vários vídeos de uma busca (só os que têm a busca no título)."""
+        if not alvo:
+            return "Quais vídeos, senhor? Diga o nome, o que deve ter no título ou cole o link da playlist."
+        import youtube
+        playlist = youtube.eh_playlist(alvo)
+        tipo = "as músicas" if audio else "os vídeos"
+
+        def tarefa():
+            self._ui("tarefa", "Baixando vários do YouTube", alvo)
+            ultimo = {"chave": None}
+
+            def progresso(n, total, titulo, pct):
+                chave = (n, pct // 25)  # avisa no começo de cada vídeo e de 25 em 25 por cento
+                if chave != ultimo["chave"]:
+                    ultimo["chave"] = chave
+                    self._ui("atividade", f"{n}/{total} · {pct}% · {titulo[:60]}")
+
+            try:
+                pasta, arquivos, falhas = youtube.baixar_varios(
+                    alvo, quantidade, audio, so_com_titulo=not playlist, ao_progresso=progresso)
+                self._ui("nota", pasta)
+                os.startfile(pasta)
+                fala = f"Pronto, senhor. Baixei {len(arquivos)} {'músicas' if audio else 'vídeos'} na pasta Vídeos, Jarvis."
+                if falhas:
+                    fala += f" {falhas} não deram para baixar."
+            except Exception as erro:
+                log.exception("Falha ao baixar vários do YouTube: %s", alvo)
+                fala = f"Não consegui baixar {tipo}, senhor. {str(erro).replace('ERROR: ', '')[:160]}"
+            self._ui("tarefa", None, None)
+            with self._trava:
+                self._falar(fala)
+                self._estado_parado()
+
+        threading.Thread(target=tarefa, daemon=True).start()
+        if playlist:
+            return f"Baixando {tipo} da playlist, senhor. Aviso quando terminar."
+        return (f"Vou baixar até {quantidade} {'músicas' if audio else 'vídeos'} com {alvo} no título, senhor. "
+                "Aviso quando terminar.")
+
+    def _resumir_videos(self, busca, quantidade):
+        """Lê as legendas dos vídeos, resume com o Claude e guarda as ideias para atualizar o Jarvis."""
+        if not busca:
+            return "Sobre o que são os vídeos, senhor?"
+        if not claude_code.disponivel():
+            return "O Claude Code não está instalado neste notebook, senhor."
+
+        def tarefa():
+            import autoestudo
+            self._ui("tarefa", "Estudando vídeos do YouTube", busca)
+            try:
+                falado, caminho = autoestudo.resumir_videos(busca, quantidade, lambda t: self._ui("atividade", t))
+                self._ui("nota", caminho)
+                fala = (f"Pronto, senhor. {falado} Guardei o resumo e as ideias na pasta melhorias. "
+                        "Se quiser, diga: Jarvis, se atualiza com as ideias.")
+            except Exception as erro:
+                log.exception("Falha ao resumir os vídeos de %s", busca)
+                fala = f"Não consegui resumir os vídeos, senhor. {erro}"
+            self._ui("tarefa", None, None)
+            with self._trava:
+                self._falar(fala)
+                self._estado_parado()
+
+        threading.Thread(target=tarefa, daemon=True).start()
+        return f"Vou assistir {quantidade} vídeos sobre {busca} e fazer um resumo, senhor. Isso leva alguns minutos."
+
+    def _preparar_autoatualizacao(self, pedido):
+        """O Jarvis pede ao Claude Code para mexer no próprio código. Só depois de o usuário confirmar."""
+        if not claude_code.disponivel():
+            return "O Claude Code não está instalado neste notebook, senhor."
+        if claude_code.ocupado():
+            return "Ainda estou com outra tarefa do Claude, senhor. Aguarde eu terminar."
+        import autoestudo
+        resumo = autoestudo.ultimo_resumo()
+        # frase genérica ("se atualiza") usa as ideias; frase com pedido específico vai junto
+        especifico = len(normalizar(pedido).split()) > 6
+        if not resumo and not especifico:
+            return ("Ainda não tenho ideias anotadas, senhor. Peça antes, por exemplo: "
+                    "resume os vídeos sobre como fazer um Jarvis.")
+
+        def atualizar():
+            threading.Thread(target=self._autoatualizar, args=(pedido if especifico else "",), daemon=True).start()
+            return "Começando. Fiz um backup antes e aviso quando terminar, senhor."
+
+        self._pendente = atualizar
+        origem = f"com as ideias de {os.path.basename(resumo)}" if resumo and not especifico else "com o seu pedido"
+        return f"Vou pedir ao Claude para mudar o meu próprio código {origem}. Confirma?"
+
+    def _autoatualizar(self, pedido):
+        import autoestudo
+        self._ui("tarefa", "Atualizando o Jarvis", pedido or "ideias dos vídeos")
+        try:
+            deu_certo, fala = autoestudo.atualizar_jarvis(pedido, lambda t: self._ui("atividade", t))
+        except Exception:
+            log.exception("Falha na autoatualização")
+            deu_certo, fala = False, "Algo deu errado na atualização, senhor. Veja o registro."
+        self._ui("tarefa", None, None)
+        with self._trava:
+            if deu_certo:
+                self._pendente = self._reiniciar
+                fala += " As mudanças valem quando eu reiniciar. Posso reiniciar agora?"
+            self._falar(fala)
+            self._estado_parado()
+
+    def _reiniciar(self):
+        """Abre um Jarvis novo (com o código atualizado) e fecha este."""
+        subprocess.Popen([sys.executable, os.path.join(PASTA, "app.py")], cwd=PASTA)
+        threading.Timer(2.5, self._janela.destroy).start()
+        return "Reiniciando, senhor. Volto em alguns segundos."
 
     def _modo_tela(self, tarefa):
         """O Jarvis vê a tela e age nela, passo a passo, falando o que faz."""

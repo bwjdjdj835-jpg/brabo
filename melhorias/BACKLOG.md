@@ -18,5 +18,10 @@ Regra: tudo que publica, instala, clica na tela ou apaga pede confirmação ("Co
 - [x] 2. Abas: "toca X" toca o YouTube numa aba dentro do Jarvis ("no navegador" = jeito antigo), "abre o último app"
   abre o site numa aba, "fecha a aba" / "fecha todas as abas". Interface agora é servida por servidor.py (só 127.0.0.1,
   só interface/, projetos/ e pdfs/). A conferir pelo usuário: o vídeo tocando dentro da aba.
+- [x] YouTube em lote: "baixa todos os vídeos que tiver jarvis" (só os que têm a busca no título, padrão 20, máx 50),
+  "baixa 5 músicas do X", link de playlist (até 200). Pasta Vídeos\Jarvis\<busca ou playlist>.
+- [x] Autoestudo (autoestudo.py): "resume os vídeos sobre como fazer um jarvis" lê as legendas (até 10 vídeos),
+  o Claude resume e salva as ideias em melhorias/ideias/. "Jarvis, se atualiza" (com confirmação): backup no git,
+  Claude Code muda o código, compila e importa o app; se quebrar, desfaz sozinho. Depois oferece reiniciar.
 - [x] 4+5. Ver a tela e clicar: já existia (agente_tela.py, "usa a tela e ..."; pânico = mouse no canto superior esquerdo)
 - [x] Já existiam: bot do Telegram, comandos personalizados (meus_comandos.json), segredos no .env

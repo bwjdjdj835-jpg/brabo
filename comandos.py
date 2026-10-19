@@ -82,6 +82,30 @@ TECLA_MUDO, TECLA_MENOS, TECLA_MAIS = 0xAD, 0xAE, 0xAF
 TECLA_PROXIMA, TECLA_ANTERIOR, TECLA_PLAY = 0xB0, 0xB1, 0xB3
 
 
+_PALAVRAS_YOUTUBE = (
+    # a quantidade sai primeiro, enquanto ainda vem antes de "vídeos"
+    r"(?:\d{1,3}|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|quinze|vinte|trinta|quarenta|cinquenta)"
+    r"(?= (?:videos?|musicas?|audios?|clipes?|primeiros?)\b)",
+    r"baix\w*", r"download\w*", r"resum\w*", r"estud\w*", r"assist\w*", r"aprend\w*", r"(?:pra|para) mim",
+    r"(?:do|no|o) youtube", "youtube", r"em mp[34]", r"mp[34]", "todos os", "todas as", "todos", "todas",
+    r"(?:os|uns|alguns|varios|varias) ", r"(?:o|um|os) videos?", r"videos?", r"(?:a|uma|as) musicas?", r"musicas?",
+    r"(?:o|os) audios?", r"audios?", r"(?:o|os) clipes?", r"clipes?", r"(?:a|essa|esta|da) playlists?", r"playlists?",
+    r"que (?:tiver|tenham?|falam?|fala) (?:de |do |da |sobre )?", r"com (?:o nome|o titulo|nome|titulo)",
+    r"no titulo", r"(?:do|da|de|sobre) (?=\w)", "pode", "por favor", r"(?:os )?primeiros?",
+)
+_NUMEROS = {"um": 1, "uma": 1, "dois": 2, "duas": 2, "tres": 3, "quatro": 4, "cinco": 5, "seis": 6, "sete": 7,
+            "oito": 8, "nove": 9, "dez": 10, "quinze": 15, "vinte": 20, "trinta": 30, "quarenta": 40, "cinquenta": 50}
+
+
+def _quantidade(t, padrao):
+    """Quantos vídeos a frase pede ("baixa 5 vídeos", "resume três vídeos"); senão o padrão."""
+    numero = re.search(r"\b(\d{1,3})\s+(?:videos?|musicas?|audios?|clipes?|primeiros?)\b", t)
+    if numero:
+        return int(numero.group(1))
+    palavra = re.search(r"\b(" + "|".join(_NUMEROS) + r")\s+(?:videos?|musicas?|audios?|clipes?|primeiros?)\b", t)
+    return _NUMEROS[palavra.group(1)] if palavra else padrao
+
+
 def _pede_criacao(t):
     """Verdadeiro se a frase pede para criar ou montar algum app, site, jogo ou APK."""
     verbo = r"\b(cria|criar|crie|faz|faca|fazer|monta|montar|gera|gerar|desenvolv\w*|constro\w*|construir|compila\w*|program\w*)\b"
@@ -178,15 +202,27 @@ def executar(comando):
 
     # ----- YouTube: baixar vídeo ou música (antes dos links, senão o link iria para a biblioteca) -----
     link_youtube = re.search(r"https?://(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)/[^\s<>\"]+", comando)
-    if tem(r"baix\w*", r"download\w*") and (link_youtube or tem("video", "videos", "youtube", "musica", "audio", "mp3", "clipe")):
-        audio = tem("musica", "audio", "mp3")
-        if link_youtube:
-            alvo = link_youtube.group().rstrip(".,;)!?")
-        else:
-            alvo = busca_de(t, r"baix\w*", r"download\w*", r"(?:pra|para) mim", "do youtube", "no youtube", "youtube",
-                            "em mp3", "mp3", "em mp4", "o video", "um video", "video", "a musica", "uma musica", "musica",
-                            "o audio", "audio", "o clipe", "clipe", "pode", "por favor")
+    sobre_videos = link_youtube or tem("video", "videos", "youtube", "musica", "musicas", "audio", "audios", "mp3",
+                                       "clipe", "clipes", "playlist", "playlists")
+    if sobre_videos and tem(r"resum\w*", r"estud\w*", r"assist\w*", r"aprend\w*") and not tem(r"baix\w*"):
+        alvo = link_youtube.group().rstrip(".,;)!?") if link_youtube else busca_de(t, *_PALAVRAS_YOUTUBE)
+        return {"acao": "youtube_resumir", "busca": alvo, "quantidade": _quantidade(t, 5)}
+    if tem(r"baix\w*", r"download\w*") and sobre_videos:
+        audio = tem("musica", "musicas", "audio", "audios", "mp3")
+        alvo = link_youtube.group().rstrip(".,;)!?") if link_youtube else busca_de(t, *_PALAVRAS_YOUTUBE)
+        playlist = bool(link_youtube and re.search(r"[?&]list=|/playlist", alvo)) or tem("playlist", "playlists")
+        varios = (playlist or tem("todos", "todas", "varios", "varias", "videos", "musicas", "audios", "clipes")
+                  or _quantidade(t, None) is not None)
+        if varios and not (link_youtube and not playlist):
+            return {"acao": "youtube_baixar_varios", "alvo": alvo, "audio": audio,
+                    "quantidade": _quantidade(t, 200 if playlist else 20)}
         return {"acao": "youtube_baixar", "alvo": alvo, "audio": audio}
+
+    # ----- o Jarvis se atualiza: o Claude Code mexe no código dele (sempre com confirmação) -----
+    if (re.search(r"\b(se|te)\s+(atualiz\w*|melhor\w*|aprimor\w*|program\w*)\b", t)
+            or tem("atualiza voce", "atualize voce", "seu proprio codigo", r"autoatualiz\w*",
+                   r"aplic\w* as ideias", r"us\w* as ideias", "atualiza com as ideias")):
+        return {"acao": "autoatualizar", "pedido": original}
 
     # ----- modo tela: o Jarvis vê a tela e age nela (clicar, digitar, rolar) -----
     gatilho_tela = re.search(

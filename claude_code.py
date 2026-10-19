@@ -255,6 +255,29 @@ def analisar_material(pedido, instrucoes, ferramentas, limite=None):
     )
 
 
+def resumir(texto, instrucoes, limite=300):
+    """O Claude lê um texto grande (ex.: legendas de vídeos) e devolve um resumo. Sem mexer em arquivos."""
+    pasta = os.path.join(PROJETOS, "_conversa")
+    os.makedirs(pasta, exist_ok=True)
+    return _rodar(
+        texto, pasta,
+        {"instrucoes": instrucoes, "extras": ["--model", "sonnet", "--max-turns", "2", "--allowedTools", "Read"]},
+        limite,
+    )
+
+
+def autoatualizar(pedido, instrucoes, ferramentas, ao_evento, limite=40 * 60):
+    """O Claude mexe no código do próprio Jarvis. Quem chama faz o backup no git e confere depois."""
+    with _ocupado:
+        log.info("Autoatualização do Jarvis: %s", pedido[:300])
+        return _rodar(
+            pedido, PASTA,
+            {"instrucoes": instrucoes,
+             "extras": ["--permission-mode", "acceptEdits", "--allowedTools", *ferramentas]},
+            limite, ao_evento,
+        )
+
+
 def passo_visao(pedido, instrucoes, pasta_foto):
     """Um passo do modo tela: o Claude lê a foto da pasta e devolve a próxima ação em texto (JSON)."""
     return _rodar(
