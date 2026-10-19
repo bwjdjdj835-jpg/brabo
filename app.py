@@ -187,7 +187,7 @@ class Jarvis:
                     self._ui("nota", f"Fora do PDF: {nome} ({motivo})")
                 if len(resultado["pulados"]) > 10:
                     self._ui("nota", f"E mais {len(resultado['pulados']) - 10} fora do PDF (lista completa no sumário).")
-                subprocess.Popen(["explorer", "/select,", resultado["arquivo"]])
+                _mostrar_arquivo(resultado["arquivo"])
                 fala = (f"Pronto, senhor. Juntei {len(resultado['convertidos'])} arquivos em um PDF de "
                         f"{resultado['paginas']} páginas. Está na pasta pdfs.")
                 if resultado["pulados"]:
@@ -406,7 +406,7 @@ class Jarvis:
         if acao == "biblioteca_apagar":
             return self._preparar_apagar(pedido["texto"])
         if acao == "abrir_biblioteca":
-            os.startfile(biblioteca.ARQUIVOS)
+            _mostrar_arquivo(biblioteca.ARQUIVOS)
             return "Abrindo a pasta da biblioteca."
 
         if acao == "pdf_jarvis":
@@ -557,7 +557,7 @@ class Jarvis:
             try:
                 arquivo, titulo = youtube.baixar(alvo, audio, progresso)
                 self._ui("nota", arquivo)
-                subprocess.Popen(["explorer", "/select,", arquivo])
+                _mostrar_arquivo(arquivo)
                 fala = f"Pronto, senhor. Baixei {tipo} {titulo}. Está na pasta Vídeos, Jarvis."
             except Exception as erro:
                 log.exception("Falha ao baixar do YouTube: %s", alvo)
@@ -592,7 +592,7 @@ class Jarvis:
                 pasta, arquivos, falhas = youtube.baixar_varios(
                     alvo, quantidade, audio, so_com_titulo=not playlist, ao_progresso=progresso)
                 self._ui("nota", pasta)
-                os.startfile(pasta)
+                _mostrar_arquivo(pasta)
                 fala = f"Pronto, senhor. Baixei {len(arquivos)} {'músicas' if audio else 'vídeos'} na pasta Vídeos, Jarvis."
                 if falhas:
                     fala += f" {falhas} não deram para baixar."
@@ -621,7 +621,7 @@ class Jarvis:
             try:
                 r = relatorio_youtube.gerar(busca, quantidade, lambda t: self._ui("atividade", t))
                 self._ui("nota", r["drive"] or r["pdf"])
-                subprocess.Popen(["explorer", "/select,", r["drive"] or r["pdf"]])
+                _mostrar_arquivo(r["drive"] or r["pdf"])
                 onde = ("Está no seu Google Drive, na pasta Jarvis." if r["drive"] else
                         "Está na pasta pdfs. Para ir ao Google Drive, abra o Google Drive no computador e entre na sua conta.")
                 fala = f"Pronto, senhor. {r['falado']} {onde}"
@@ -851,9 +851,9 @@ class Jarvis:
             self._ui("nota", caminho)
         principais = [a for a in projeto["arquivos"] if a.endswith((".apk", ".aab"))] or projeto["arquivos"]
         if principais:
-            subprocess.Popen(["explorer", "/select,", principais[-1]])
+            _mostrar_arquivo(principais[-1])
         else:
-            os.startfile(projeto["pasta"])
+            _mostrar_arquivo(projeto["pasta"])
         pacotes = [os.path.basename(a) for a in principais if a.endswith((".apk", ".aab"))]
         detalhe = f" Os arquivos são {', '.join(pacotes)}." if pacotes else ""
         return (f"Está na pasta projetos, {projeto['nome']}, dentro de Documentos, Jarvis.{detalhe} "
@@ -999,10 +999,30 @@ def _abrir_projeto(pasta):
             subprocess.Popen([studio, pasta])
         apk = claude_code.apk_de(pasta)
         # mostra o APK selecionado no explorador de arquivos
-        subprocess.Popen(["explorer", "/select,", apk] if apk else ["explorer", pasta])
+        _mostrar_arquivo(apk or pasta)
         return
     index = os.path.join(pasta, "index.html")
-    os.startfile(index if os.path.exists(index) else pasta)
+    try:
+        os.startfile(index if os.path.exists(index) else pasta)
+    except OSError:
+        log.warning("Não consegui abrir %s", pasta, exc_info=True)
+
+
+def _mostrar_arquivo(caminho):
+    """Abre o Explorador com o arquivo selecionado (ou a pasta). Se o Windows negar, só registra:
+    o trabalho já foi feito, e não pode virar "falhou" por causa da janela que mostra o resultado."""
+    explorer = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "explorer.exe")
+    try:
+        if os.path.isfile(caminho):
+            subprocess.Popen([explorer, "/select,", caminho])
+        else:
+            os.startfile(caminho)
+    except OSError:
+        log.warning("Não consegui mostrar %s no Explorador", caminho, exc_info=True)
+        try:
+            os.startfile(os.path.dirname(caminho) if os.path.isfile(caminho) else caminho)
+        except OSError:
+            pass
 
 
 def _voz_windows(texto):

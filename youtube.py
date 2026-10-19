@@ -5,6 +5,7 @@ música em MP3, na pasta Vídeos\\Jarvis. O ffmpeg vem do pacote imageio-ffmpeg,
 As legendas (inclusive as automáticas) viram texto para o Claude resumir o que os vídeos ensinam.
 Baixe só o que você tem direito de baixar (seus vídeos, conteúdo liberado, uso pessoal).
 """
+import difflib
 import html
 import logging
 import os
@@ -18,7 +19,8 @@ LIMITE_MINUTOS = 180   # nada de baixar lives de 10 horas por engano
 MAX_VIDEOS = 150       # de uma vez, numa busca
 MAX_PLAYLIST = 200
 PALAVRAS_VAZIAS = {"de", "do", "da", "dos", "das", "o", "a", "os", "as", "um", "uma", "e", "com", "que", "no", "na",
-                   "em", "para", "pra", "sobre", "tiver", "tem", "the", "of", "and", "to"}
+                   "em", "para", "pra", "sobre", "tiver", "tem", "the", "of", "and", "to", "ou", "titulo", "titilo",
+                   "parecido", "parecidos", "playlist", "payliste", "playliste", "video", "videos"}
 
 log = logging.getLogger("jarvis")
 
@@ -96,6 +98,16 @@ def _arquivos(info, audio):
     return arquivos
 
 
+def _titulo_tem(titulo, palavras):
+    """O título tem todas as palavras? Aceita erro de digitação ("jarves" acha "Jarvis")."""
+    no_titulo = re.findall(r"\w+", _sem_acento(titulo))
+    for palavra in palavras:
+        if not any(palavra in t or (len(palavra) >= 4 and difflib.SequenceMatcher(None, palavra, t).ratio() >= 0.8)
+                   for t in no_titulo):
+            return False
+    return True
+
+
 def buscar(busca):
     """Primeiro resultado da busca no YouTube, sem baixar. Devolve (id do vídeo, título)."""
     resultados = listar(busca, 1)
@@ -121,13 +133,17 @@ def listar(alvo, quantidade=10, so_com_titulo=False):
     with yt_dlp.YoutubeDL(opcoes) as ydl:
         info = ydl.extract_info(origem, download=False) or {}
     entradas = info.get("entries") if info.get("entries") is not None else [info]
-    palavras = [p for p in re.findall(r"\w+", _sem_acento(alvo)) if p not in PALAVRAS_VAZIAS]
+    # "jarvis ou como criar jarvis": o título pode ter qualquer uma das alternativas
+    alternativas = [[p for p in re.findall(r"\w+", parte) if p not in PALAVRAS_VAZIAS]
+                    for parte in re.split(r"\bou\b|\bor\b", _sem_acento(alvo))]
+    alternativas = [a for a in alternativas if a]
     resultados = []
     for entrada in entradas:
         if not entrada or not entrada.get("id"):
             continue
         titulo = entrada.get("title") or ""
-        if so_com_titulo and not eh_link(alvo) and not all(p in _sem_acento(titulo) for p in palavras):
+        if (so_com_titulo and not eh_link(alvo) and alternativas
+                and not any(_titulo_tem(titulo, palavras) for palavras in alternativas)):
             continue
         if (entrada.get("duration") or 0) > LIMITE_MINUTOS * 60:
             continue
