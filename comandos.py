@@ -478,6 +478,16 @@ def executar(comando, mini_tela=False, url_mini=""):
     if tem("aba", "abas", "guia", "guias") and tem(r"fech\w*", r"tira\w*", r"some\w*", r"sai\w*"):
         return {"acao": "fechar_aba", "todas": tem("todas", "tudo")}
 
+    # ----- prospecção completa: Maps -> prévias -> vídeos -> mensagens prontas (o envio é do usuário) -----
+    prospeccao = re.match(r"^(?:(?:faz\w*|faca|inici\w*|comec\w*|roda)\s+(?:uma\s+|a\s+)?)?prospec\w*\s+complet\w*"
+                          r"\s+(?:de\s+|com\s+|para\s+|pra\s+|em\s+)?(.+)", t)
+    if prospeccao:
+        quantos = re.search(r"\b(\d{1,2})\s+(?:comercios?|negocios?|empresas?|lojas?|lugares)\b", t)
+        busca = re.sub(r"\b\d{1,2}\s+(?:comercios?|negocios?|empresas?|lojas?|lugares)\s*(?:de\s+)?", "",
+                       prospeccao.group(1)).strip()
+        return {"acao": "prospeccao", "busca": _com_acentos(busca, t, original),
+                "quantidade": int(quantos.group(1)) if quantos else 5}
+
     # ----- lembretes, timer e modo foco (antes do YouTube: "me lembra de assistir o vídeo...") -----
     lembrete = _lembrete(t, original)
     if lembrete is not None:

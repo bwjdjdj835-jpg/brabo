@@ -276,6 +276,46 @@ class Jarvis:
             return "Abrindo na mini tela, senhor."
         return "Abrindo na mini tela, senhor. Na primeira vez o navegador leva alguns segundos para ligar."
 
+    def _prospeccao(self, busca, quantidade=5):
+        """Código B/107108109110 300-300: comércios do Maps -> prévias -> vídeos -> página com as mensagens prontas.
+        O envio fica com o usuário, um por um (disparo automático em massa bane o número e é proibido)."""
+        if not busca:
+            return "Qual ramo e cidade, senhor? Por exemplo: prospecção completa de barbearias em Cacoal."
+        if getattr(self, "_prospectando", False):
+            return "Ainda estou na prospecção anterior, senhor. Aviso quando terminar."
+        self._prospectando = True
+
+        def trabalho():
+            import navegador
+            import prospeccao
+            self._ui("tarefa", "Prospecção completa", busca)
+            try:
+                navegador.preparar()
+                self._aba_ativa = "navegador"
+                self._ui("abrirNavegador")  # o senhor acompanha tudo na mini tela
+                r = prospeccao.executar(busca, quantidade, lambda t: self._ui("atividade", t))
+                self._ui("nota", r["envios"])
+                try:
+                    os.startfile(r["envios"])
+                except OSError:
+                    log.warning("Não consegui abrir %s", r["envios"], exc_info=True)
+                fala = (f"Pronto, senhor. Encontrei {r['negocios']} comércios, fiz as prévias e gravei {r['videos']} "
+                        f"vídeos. {r['com_whatsapp']} têm celular para WhatsApp. Abri a página de envios: confira "
+                        "cada mensagem, anexe o vídeo e envie um por um.")
+            except Exception as erro:
+                log.exception("Falha na prospecção: %s", busca)
+                fala = f"Não consegui terminar a prospecção, senhor. {str(erro)[:150]}"
+            finally:
+                self._prospectando = False
+            self._ui("tarefa", None, None)
+            with self._trava:
+                self._falar(fala)
+                self._estado_parado()
+
+        threading.Thread(target=trabalho, daemon=True).start()
+        return (f"Começando a prospecção de {busca}, senhor: até {quantidade} comércios. Vou mostrando na mini tela; "
+                "leva alguns minutos.")
+
     def _modo_navegador(self, tarefa):
         """O Jarvis age sozinho dentro da mini tela (clica, digita, rola), mostrando tudo ao vivo."""
         if claude_code.ocupado():
@@ -638,6 +678,8 @@ class Jarvis:
             return f"O senhor tem {len(meus)} comando{'s' if len(meus) > 1 else ''}: {nomes}."
         if acao == "navegador_abrir":
             return self._abrir_mini_tela(pedido["alvo"], pedido.get("buscador", "bing"))
+        if acao == "prospeccao":
+            return self._prospeccao(pedido["busca"], pedido.get("quantidade", 5))
         if acao == "navegador_controle":
             nomes = {"voltar": "Voltando.", "avancar": "Avançando.", "recarregar": "Recarregando a página.",
                      "rolar": "Descendo." if (pedido.get("valor") or 0) > 0 else "Subindo."}

@@ -83,7 +83,7 @@
       "nome": "A/100/100/100/200 · prospecção",
       "frases": [
         "a/100/100/100/200 {nicho}",
-        "prospecção {nicho}"
+        "prospecção simples {nicho}"
       ],
       "acao": {
         "tipo": "mini_tela",
@@ -178,6 +178,31 @@
         "texto": "Sobre qual tema é o eBook, senhor? Por exemplo: C/1020304050607080 receitas fit para iniciantes."
       },
       "descricao": "Explica como usar o código de eBooks."
+    },
+    {
+      "nome": "B/107108109110 300-300 · prospecção completa",
+      "frases": [
+        "b/107108109110 300-300 {busca}",
+        "prospecção com vídeo {busca}"
+      ],
+      "acao": {
+        "tipo": "comandos",
+        "lista": [
+          "faz prospecção completa de {busca}"
+        ]
+      },
+      "descricao": "Busca comércios no Google Maps, cria a prévia do site de cada um, grava um vídeo e prepara as mensagens para o senhor enviar no WhatsApp, um por um."
+    },
+    {
+      "nome": "B/107108109110 300-300 · ajuda",
+      "frases": [
+        "b/107108109110 300-300"
+      ],
+      "acao": {
+        "tipo": "responder",
+        "texto": "Qual ramo e cidade, senhor? Por exemplo: B/107108109110 300-300 barbearias em Cacoal. Para mais comércios, diga: 10 comércios de barbearias em Cacoal. As mensagens ficam prontas, e o envio é do senhor."
+      },
+      "descricao": "Explica como usar o código de prospecção completa."
     }
   ]
 }
