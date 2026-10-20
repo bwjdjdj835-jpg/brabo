@@ -132,13 +132,60 @@
   .nb-barra button, .nb-baixo button { height: 30px; min-width: 32px; padding: 0 10px; border-radius: 8px; font-size: 12px;
                                        border: 1px solid var(--borda-forte); background: rgba(13,24,44,.9); }
   .nb-barra button:hover, .nb-baixo button:hover { border-color: var(--cor); }
-  .nb-area { position: relative; flex: 1; min-height: 0; cursor: crosshair; }
-  .nb-area img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  /* o notebook 3D (Lenovo, i5 13ª geração): tampa com a tela ao vivo, teclado e touchpad de verdade */
+  #paginas > .nb { background: transparent; border: 0; box-shadow: none; overflow: visible; }
+  .nb-palco { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+  .laptop { position: absolute; left: 50%; top: 4px; width: 1000px; margin-left: -500px; transform-origin: top center; outline: none; }
+  .tampa { position: relative; width: 1000px; height: 640px; padding: 22px 22px 36px; border-radius: 22px 22px 6px 6px;
+           background: linear-gradient(160deg, #34343a, #1d1d21 60%, #26262b); box-shadow: 0 0 0 1px #45454d, 0 30px 60px rgba(0,0,0,.65); }
+  .tampa::before { content: ""; position: absolute; top: 8px; left: 50%; width: 7px; height: 7px; margin-left: -3px;
+                   border-radius: 50%; background: #0d0d10; box-shadow: inset 0 0 2px #4b5563; }
+  .nb.controlando .tampa { box-shadow: 0 0 0 2px var(--alerta), 0 0 40px rgba(245,158,11,.45), 0 30px 60px rgba(0,0,0,.65); }
+  .marca-tampa { position: absolute; bottom: 11px; left: 50%; transform: translateX(-50%); font: 600 14px/1 "Segoe UI", sans-serif;
+                 letter-spacing: .04em; color: #8b8b93; }
+  .tela-nb { position: relative; width: 100%; height: 100%; border-radius: 4px; overflow: hidden; background: #000; cursor: crosshair; }
+  .tela-nb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .dobradica { width: 940px; height: 14px; margin: 0 auto; border-radius: 0 0 10px 10px; background: linear-gradient(#141417, #34343a); }
+  .base-3d { position: relative; perspective: 1500px; perspective-origin: 50% -20%; margin-top: -2px; }
+  .base { position: relative; width: 1080px; height: 600px; margin-left: -40px; padding: 28px 74px 0; transform: rotateX(63deg);
+          transform-origin: top center; border-radius: 10px 10px 34px 34px;
+          background: linear-gradient(180deg, #3d3d44, #2c2c31 55%, #232327); box-shadow: 0 0 0 1px #4a4a52, 0 40px 60px rgba(0,0,0,.6); }
+  .teclado { display: flex; flex-direction: column; gap: 7px; padding: 12px; border-radius: 12px; background: #141417;
+             box-shadow: inset 0 2px 6px rgba(0,0,0,.6); }
+  .teclas { display: flex; gap: 7px; }
+  .tecla { flex: 1 1 0; height: 50px; min-width: 0; padding: 0 4px; border: 0; border-radius: 7px; color: #e3e3ea;
+           font: 500 15px "Segoe UI", sans-serif; background: linear-gradient(#2a2a30, #1d1d22);
+           box-shadow: 0 3px 0 #08080a, inset 0 1px 0 rgba(255,255,255,.07); display: flex; align-items: center; justify-content: center;
+           white-space: nowrap; overflow: hidden; }
+  .tecla.f { height: 32px; font-size: 12px; color: #b9b9c2; }
+  .tecla.peq { font-size: 12px; }
+  .tecla:hover { background: linear-gradient(#33333a, #24242a); }
+  .tecla:active, .tecla.apertada { transform: translateY(2px); box-shadow: 0 1px 0 #08080a; background: #2563eb; color: #fff; }
+  .tecla.ligada { box-shadow: 0 3px 0 #08080a, inset 0 0 0 2px var(--cor2); color: var(--cor2); }
+  .touchpad { position: relative; width: 440px; height: 230px; margin: 22px auto 0; border-radius: 16px; touch-action: none; cursor: grab;
+              background: linear-gradient(#37373d, #2d2d32); box-shadow: inset 0 0 0 1px #4d4d55, inset 0 2px 8px rgba(0,0,0,.35); }
+  .touchpad:active { cursor: grabbing; }
+  .touchpad .botoes { position: absolute; left: 0; right: 0; bottom: 0; height: 52px; display: flex; border-top: 1px solid #4d4d55; }
+  .touchpad .botoes div { flex: 1; cursor: pointer; }
+  .touchpad .botoes div:first-child { border-right: 1px solid #4d4d55; border-radius: 0 0 0 16px; }
+  .touchpad .botoes div:last-child { border-radius: 0 0 16px 0; }
+  .touchpad .botoes div:active { background: rgba(61,139,255,.25); }
+  .adesivo { position: absolute; right: 96px; bottom: 70px; width: 78px; height: 78px; padding: 7px; border-radius: 6px;
+             background: linear-gradient(135deg, #0b3fa8, #0891e8); color: #fff; font: 700 10px/1.2 "Segoe UI", sans-serif; }
+  .adesivo b { display: block; font-size: 17px; margin: 3px 0; }
+  .marca-base { position: absolute; left: 96px; bottom: 82px; font: 600 15px "Segoe UI", sans-serif; color: #77777f; }
+  /* anel azul no "chão": inclinado junto com a base, atrás dela */
+  .anel { position: absolute; left: -200px; right: -200px; top: -40px; height: 760px; border-radius: 50%; pointer-events: none;
+          transform: rotateX(63deg); transform-origin: top center;
+          border: 4px solid rgba(96,165,250,.8); box-shadow: 0 0 50px rgba(61,139,255,.75), inset 0 0 70px rgba(61,139,255,.45); }
+  .anel::after { content: ""; position: absolute; inset: 60px 110px; border-radius: 50%; border: 2px solid rgba(96,165,250,.35);
+                 box-shadow: 0 0 30px rgba(61,139,255,.35); }
+  .laptop.so-tela .base-3d { display: none; }
   .nb-baixo { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--borda); flex-wrap: wrap; }
   .nb-baixo input { flex: 1; min-width: 160px; height: 30px; padding: 0 10px; border-radius: 8px; outline: none;
                     background: rgba(5,11,22,.9); border: 1px solid var(--borda-forte); }
   .nb-baixo input:focus { border-color: var(--cor); }
-  .nb-log { list-style: none; max-height: 64px; overflow-y: auto; padding: 0 10px 8px; font-size: 11px; color: var(--suave); }
+  .nb-log { list-style: none; max-height: 46px; overflow-y: auto; padding: 0 10px 8px; font-size: 11px; color: var(--suave); }
   .nb-log li b { color: var(--cor2); font-weight: 600; margin-right: 6px; }
 
   #bolha { text-align: center; max-width: 680px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
@@ -1159,21 +1206,42 @@
           <button data-nb="pausar" title="Pausar ou retomar o Braga">⏸ Pausar</button>
           <button data-nb="parar" title="Parar a tarefa do Braga">■ Parar</button>
           <label class="check" title="Freio: jogar o mouse no canto superior esquerdo para tudo"><input type="checkbox" class="nb-freio" checked> Freio</label>
+          <button data-nb="teclado" title="Mostrar ou esconder o teclado e o touchpad">⌨</button>
           <button data-nb="flutuante" title="Notebook flutuante, sempre por cima">⧉</button>
         </div>
-        <div class="nb-area" title="Clique, clique duplo, botão direito e rodinha acontecem de verdade no notebook">
-          <img alt=""><div class="mini-aviso">ligando a captura…</div>
+        <div class="nb-palco">
+          <div class="laptop" tabindex="0" title="Com o notebook selecionado, o seu teclado também digita nele">
+            <div class="tampa">
+              <div class="tela-nb" title="Clique, clique duplo, botão direito e rodinha acontecem de verdade no notebook">
+                <img alt=""><div class="mini-aviso">ligando a captura…</div>
+              </div>
+              <span class="marca-tampa">Lenovo</span>
+            </div>
+            <div class="dobradica"></div>
+            <div class="base-3d"><div class="anel"></div><div class="base">
+              <div class="teclado"></div>
+              <div class="touchpad" title="Deslize para mover o cursor, toque para clicar (dois toques = clique duplo)">
+                <div class="botoes"><div data-pad="left" title="Botão esquerdo"></div><div data-pad="right" title="Botão direito"></div></div>
+              </div>
+              <span class="marca-base">Lenovo</span>
+              <div class="adesivo">intel<b>CORE i5</b>13th Gen</div>
+            </div></div>
+          </div>
         </div>
         <div class="nb-baixo">
-          <input class="nb-digitar" placeholder="Digitar no notebook (Enter envia)" autocomplete="off">
-          <button data-tecla="win" title="Tecla Windows">⊞</button><button data-tecla="enter">Enter</button>
-          <button data-tecla="tab">Tab</button><button data-tecla="esc">Esc</button><button data-tecla="backspace">⌫</button>
           <input class="nb-pedir" placeholder="Pedir ao Braga (ou corrigir enquanto ele age)" autocomplete="off">
         </div>
         <ol class="nb-log"></ol>`;
       this.el = el;
       this.img = el.querySelector("img");
-      const area = el.querySelector(".nb-area");
+      this.montarTeclado(el.querySelector(".teclado"));
+      this.montarTouchpad(el.querySelector(".touchpad"));
+      this.ligarTecladoFisico(el.querySelector(".laptop"));
+      el.querySelector('[data-nb="teclado"]').onclick = () => {
+        el.querySelector(".laptop").classList.toggle("so-tela");
+        this.encaixar();
+      };
+      const area = el.querySelector(".tela-nb");
       area.addEventListener("click", (e) => {
         const p = this.ponto(e);
         if (!p) return;
@@ -1202,13 +1270,6 @@
       el.querySelector('[data-nb="parar"]').onclick = () => this.acao("parar");
       el.querySelector('[data-nb="flutuante"]').onclick = () => pywebview.api.abrir_notebook_flutuante();
       el.querySelector(".nb-freio").onchange = (e) => this.acao("freio", null, e.target.checked);
-      el.querySelectorAll("[data-tecla]").forEach((b) => (b.onclick = () => this.acao("tecla", null, b.dataset.tecla)));
-      const digitar = el.querySelector(".nb-digitar");
-      digitar.addEventListener("keydown", (e) => {
-        if (e.key !== "Enter" || !digitar.value) return;
-        this.acao("digitar", null, digitar.value);
-        digitar.value = "";
-      });
       const pedir = el.querySelector(".nb-pedir");
       pedir.addEventListener("keydown", (e) => {
         if (e.key !== "Enter" || !pedir.value.trim()) return;
@@ -1217,6 +1278,146 @@
         pedir.value = "";
       });
       return el;
+    },
+    // ---------- teclado do notebook (ABNT2): cada tecla aperta a tecla de verdade ----------
+    // [rótulo, código (tecla especial) ou vazio (caractere), largura, classe]
+    LINHAS: [
+      [["Esc", "esc", 1, "f"], ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => [`F${n}`, `f${n}`, 1, "f"]),
+       ["PrtSc", "printscreen", 1, "f"], ["Del", "delete", 1, "f"]],
+      [["'"], ["1"], ["2"], ["3"], ["4"], ["5"], ["6"], ["7"], ["8"], ["9"], ["0"], ["-"], ["="], ["⌫", "backspace", 2]],
+      [["Tab", "tab", 1.5], ..."qwertyuiop".split("").map((c) => [c]), ["´"], ["["], ["]"], ["\\", "", 1.2]],
+      [["Caps", "caps", 1.8], ..."asdfghjkl".split("").map((c) => [c]), ["ç"], ["~"], ["Enter", "enter", 2.4]],
+      [["Shift", "shift", 2.3], ..."zxcvbnm".split("").map((c) => [c]), [","], ["."], [";"], ["/"], ["Shift", "shift", 2.3]],
+      [["Ctrl", "ctrl", 1.3, "peq"], ["Fn", "fn", 1, "peq"], ["⊞", "win", 1.2], ["Alt", "alt", 1.2, "peq"], [" ", "space", 6.5],
+       ["AltGr", "altgr", 1.2, "peq"], ["Ctrl", "ctrl", 1.2, "peq"], ["←", "left"], ["↑", "up"], ["↓", "down"], ["→", "right"]],
+    ],
+    COM_SHIFT: { "'": "\"", 1: "!", 2: "@", 3: "#", 4: "$", 5: "%", 6: "¨", 7: "&", 8: "*", 9: "(", 0: ")", "-": "_", "=": "+",
+                 "´": "`", "[": "{", "]": "}", "\\": "|", "~": "^", ",": "<", ".": ">", ";": ":", "/": "?" },
+    mods: { shift: false, ctrl: false, alt: false, altgr: false, caps: false },
+    montarTeclado(caixa) {
+      for (const linha of this.LINHAS) {
+        const div = document.createElement("div");
+        div.className = "teclas";
+        for (const [rotulo, codigo = "", largura = 1, classe = ""] of linha) {
+          const b = document.createElement("button");
+          b.className = "tecla " + classe;
+          b.textContent = rotulo.length === 1 && /[a-zç]/.test(rotulo) ? rotulo.toUpperCase() : rotulo;
+          b.style.flexGrow = largura;
+          b.dataset.codigo = codigo;
+          b.dataset.char = codigo ? "" : rotulo;
+          b.tabIndex = -1;
+          b.onmousedown = (e) => e.preventDefault();  // o foco fica no notebook, não no botão
+          b.onclick = () => this.apertar(b);
+          div.append(b);
+        }
+        caixa.append(div);
+      }
+    },
+    atualizarMods() {
+      this.el.querySelectorAll(".tecla").forEach((b) => {
+        const c = b.dataset.codigo;
+        b.classList.toggle("ligada", c in this.mods && this.mods[c]);
+      });
+    },
+    apertar(b) {
+      const codigo = b.dataset.codigo, m = this.mods;
+      b.classList.add("apertada");
+      setTimeout(() => b.classList.remove("apertada"), 140);
+      if (["shift", "ctrl", "alt", "altgr", "caps"].includes(codigo)) {  // grudam até a próxima tecla (Caps alterna)
+        m[codigo] = !m[codigo];
+        return this.atualizarMods();
+      }
+      if (codigo === "fn") return;
+      const combinacao = [m.ctrl && "ctrl", m.alt && "alt", m.altgr && "ctrl", m.altgr && "alt"].filter(Boolean);
+      if (codigo) {
+        this.acao("tecla", null, [...new Set(combinacao), m.shift && "shift", codigo === "space" ? "space" : codigo]
+          .filter(Boolean).join("+"));
+      } else {
+        let c = b.dataset.char;
+        if (combinacao.length) {
+          this.acao("tecla", null, [...new Set(combinacao), c].join("+"));
+        } else {
+          if (/[a-zç]/.test(c)) c = m.shift !== m.caps ? c.toUpperCase() : c;
+          else if (m.shift) c = this.COM_SHIFT[c] ?? c;
+          this.acao("digitar", null, c);
+        }
+      }
+      Object.assign(m, { shift: false, ctrl: false, alt: false, altgr: false });
+      this.atualizarMods();
+    },
+    // o teclado de verdade também vale quando o notebook está selecionado
+    ligarTecladoFisico(laptop) {
+      const NOMES = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down", Escape: "esc",
+                      Backspace: "backspace", Enter: "enter", Tab: "tab", Delete: "delete", Home: "home", End: "end",
+                      PageUp: "pageup", PageDown: "pagedown", " ": "space" };
+      laptop.addEventListener("keydown", (e) => {
+        if (["Control", "Shift", "Alt", "Meta", "CapsLock"].includes(e.key) || e.key === "F11") return;
+        e.preventDefault();
+        e.stopPropagation();
+        const visual = [...this.el.querySelectorAll(".tecla")].find((b) =>
+          b.dataset.char === e.key.toLowerCase() || b.dataset.codigo === (NOMES[e.key] || e.key.toLowerCase()));
+        if (visual) { visual.classList.add("apertada"); setTimeout(() => visual.classList.remove("apertada"), 140); }
+        if (e.key.length === 1 && e.key !== " " && !e.ctrlKey && !e.altKey && !e.metaKey) return this.acao("digitar", null, e.key);
+        const nome = NOMES[e.key] || e.key.toLowerCase();
+        this.acao("tecla", null, [e.ctrlKey && "ctrl", e.altKey && "alt", e.shiftKey && e.key.length > 1 && "shift", nome]
+          .filter(Boolean).join("+"));
+      });
+    },
+    // ---------- touchpad: deslizar move o cursor de verdade; tocar clica ----------
+    montarTouchpad(pad) {
+      const SENSIBILIDADE = 2.6;
+      let toque = null, ultimoToque = 0, agendado = null, mov = { dx: 0, dy: 0 }, enviando = false;
+      const enviarMov = () => {
+        if (enviando || (!Math.round(mov.dx) && !Math.round(mov.dy))) return;
+        const passo = [Math.round(mov.dx), Math.round(mov.dy)];
+        mov = { dx: mov.dx - passo[0], dy: mov.dy - passo[1] };
+        enviando = true;
+        pywebview.api.notebook_acao("deslizar", null, null, passo)
+          .catch(() => {}).finally(() => { enviando = false; enviarMov(); });
+      };
+      pad.addEventListener("pointerdown", (e) => {
+        if (e.target.dataset.pad) return;
+        pad.setPointerCapture(e.pointerId);
+        toque = { x: e.clientX, y: e.clientY, inicio: Date.now(), andou: 0 };
+      });
+      pad.addEventListener("pointermove", (e) => {
+        if (!toque) return;
+        const dx = e.clientX - toque.x, dy = e.clientY - toque.y;
+        toque.x = e.clientX; toque.y = e.clientY; toque.andou += Math.abs(dx) + Math.abs(dy);
+        mov.dx += dx * SENSIBILIDADE; mov.dy += dy * SENSIBILIDADE;
+        enviarMov();
+      });
+      pad.addEventListener("pointerup", () => {
+        if (!toque) return;
+        const foiToque = toque.andou < 6 && Date.now() - toque.inicio < 260;
+        toque = null;
+        if (!foiToque) return;
+        if (Date.now() - ultimoToque < 320) { clearTimeout(agendado); ultimoToque = 0; return this.acao("tocar_duplo"); }
+        ultimoToque = Date.now();
+        agendado = setTimeout(() => this.acao("tocar", null, "left"), 300);
+      });
+      pad.querySelectorAll("[data-pad]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); this.acao("tocar", null, b.dataset.pad); }));
+      let rolagem = 0, rolando = false;
+      pad.addEventListener("wheel", (e) => {
+        e.preventDefault(); rolagem += e.deltaY;
+        if (rolando) return; rolando = true;
+        setTimeout(() => { this.acao("rolar", null, Math.round(rolagem)); rolagem = 0; rolando = false; }, 150);
+      }, { passive: false });
+    },
+    // o notebook 3D é desenhado em 1000 px de largura e encolhe para caber no espaço
+    encaixar() {
+      const palco = this.el?.querySelector(".nb-palco"), laptop = this.el?.querySelector(".laptop");
+      if (!palco || !palco.clientWidth) return;
+      const soTela = laptop.classList.contains("so-tela");
+      // mede o tamanho desenhado de verdade (a base inclinada em 3D) e divide pela escala atual
+      const atual = this.escala || 1, topo = laptop.getBoundingClientRect().top;
+      const partes = soTela ? [".tampa"] : [".tampa", ".base"];  // o anel do chão pode ficar cortado embaixo
+      const fundo = Math.max(...partes.map((s) => laptop.querySelector(s).getBoundingClientRect().bottom));
+      const altura = (fundo - topo) / atual + 12;
+      const escala = Math.min(palco.clientWidth / (soTela ? 1010 : 1240), palco.clientHeight / altura);
+      if (Math.abs(escala - atual) < 0.002) return;
+      this.escala = escala;
+      laptop.style.transform = `scale(${escala})`;
     },
     // ponto do clique de 0 a 1 na tela real, descontando as faixas pretas do object-fit: contain
     ponto(e) {
@@ -1272,6 +1473,7 @@
         } catch (e) { espera = 800; }
         if (Date.now() - ultimoEstado > 1000) {
           ultimoEstado = Date.now();
+          this.encaixar();  // a janela pode ter mudado de tamanho
           pywebview.api.notebook_estado().then((s) => this.mostrarEstado(s)).catch(() => {});
         }
         setTimeout(proximo, espera);
@@ -1280,6 +1482,11 @@
     },
     async abrir() {
       if (!this.info) this.info = await pywebview.api.notebook_info();
+      if (!this.encaixarLigado) {
+        this.encaixarLigado = true;
+        addEventListener("resize", () => this.encaixar());
+      }
+      setTimeout(() => this.encaixar(), 0);
       if (!this.aba()) abas.abrir("Mini notebook", this.URL_ABA, "notebook");
       else abas.mostrar(this.aba().id);
       this.mostrarEstado(this.info);

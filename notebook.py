@@ -278,6 +278,25 @@ class ControleReal:
         self.preparar()
         pyautogui.moveTo(*self.real(fx, fy), duration=0.15)
 
+    def deslizar(self, dx, dy):
+        """Touchpad: o dedo deslizando move o cursor de verdade (dx, dy em pixels reais)."""
+        import pyautogui
+        self.preparar()
+        pyautogui.moveRel(int(dx), int(dy), duration=0)
+        self.ultimo_ponto = tuple(pyautogui.position())
+
+    def tocar(self, botao="left", duplo=False):
+        """Touchpad: toque (ou botão do touchpad) clica onde o cursor está, atravessando o Braga."""
+        import pyautogui
+        self.preparar()
+        x, y = pyautogui.position()
+        with _Atravessar(self, x, y):
+            if duplo:
+                pyautogui.doubleClick(x, y)
+            else:
+                pyautogui.click(x, y, button=botao)
+        self.ultimo_ponto = (x, y)
+
     def rolar(self, cliques):
         import pyautogui
         self.preparar()
@@ -427,6 +446,13 @@ def executar(tipo, x=None, y=None, valor=None):
         controle.clicar(x, y, botao="right")
     elif tipo == "mover":
         controle.mover(x, y)
+    elif tipo == "deslizar":
+        controle.deslizar(*(valor or (0, 0)))
+        return {"ok": True}  # o dedo manda muitos destes: sem registro nem estado, para não pesar
+    elif tipo == "tocar":
+        controle.tocar(valor if valor in ("left", "right") else "left")
+    elif tipo == "tocar_duplo":
+        controle.tocar(duplo=True)
     elif tipo == "rolar":
         passos = round(float(valor or 0) / 100)
         controle.rolar(-(passos or (1 if float(valor or 0) > 0 else -1)))
@@ -452,7 +478,7 @@ def executar(tipo, x=None, y=None, valor=None):
     elif tipo == "freio":
         controle.freio = bool(valor)
         sessao.registrar("Freio do canto " + ("ligado" if controle.freio else "desligado"))
-    if tipo in ("clicar", "duplo", "direito", "tecla"):
+    if tipo in ("clicar", "duplo", "direito", "tecla", "tocar", "tocar_duplo"):
         sessao.registrar(f"Senhor: {tipo}" + (f" {valor}" if tipo == "tecla" else ""))
     elif tipo == "digitar":
         sessao.registrar(f"Senhor digitou: {str(valor)[:40]}")
