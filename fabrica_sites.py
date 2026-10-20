@@ -13,6 +13,7 @@ Tudo fica em sites_clientes/<data-busca>/: entregas.html, sites.json, <comércio
 <comércio>.zip. Os vídeos MP4 vão para Vídeos\\Jarvis\\Sites\\<data-busca>\\.
 """
 import datetime
+import hashlib
 import html
 import json
 import logging
@@ -69,6 +70,70 @@ def print_do_maps(negocio, destino):
     with open(destino, "wb") as arquivo:
         arquivo.write(navegador._rodar(foto, limite=60))
     return destino
+
+
+# Fotos que aparecem na página do negócio no Maps (a de capa e as da galeria). O endereço sem o "=w..." no fim é a
+# foto em si; pedimos a versão grande.
+_JS_FOTOS = r"""() => {
+  const vistos = new Set(), saida = [];
+  for (const img of document.querySelectorAll('img')) {
+    const src = img.currentSrc || img.src || '';
+    // grass-cs é o endereço atual das fotos dos lugares; /a/ e /a- são fotos de perfil de quem avaliou (fora)
+    if (!/googleusercontent\.com\/(p\/|gps-cs|gps-proxy|geougc|grass-cs)/.test(src)) continue;
+    const base = src.split('=')[0];
+    if (vistos.has(base)) continue;
+    vistos.add(base);
+    saida.push(base);
+  }
+  return saida.slice(0, 12);
+}"""
+
+
+def baixar_fotos(pasta_fotos, maximo=6):
+    """Baixa as fotos do negócio que estão na página aberta do Maps (chamar logo depois do print).
+
+    As fotos do Maps são de quem as tirou (o dono ou clientes): servem para a prévia que vai ser mostrada ao
+    próprio dono, e ele precisa autorizar antes de o site virar oficial."""
+    def achar():
+        pagina = navegador._pagina()
+        enderecos = pagina.evaluate(_JS_FOTOS)  # as da página do lugar (capa e algumas da galeria)
+        try:  # abre a galeria (clicando na foto de capa) para carregar mais fotos
+            capa = pagina.locator('button[aria-label^="Foto de"], button[jsaction*="heroHeaderImage"]').first
+            capa.click(timeout=5000)
+            pagina.wait_for_timeout(2500)
+            pagina.mouse.move(300, 450)
+            for _ in range(3):
+                pagina.mouse.wheel(0, 1200)
+                pagina.wait_for_timeout(800)
+            enderecos += [e for e in pagina.evaluate(_JS_FOTOS) if e not in enderecos]
+        except Exception:
+            log.info("Fábrica de sites: não deu para abrir a galeria de fotos do Maps", exc_info=True)
+        return enderecos
+
+    enderecos = navegador._rodar(achar, limite=40)
+    os.makedirs(pasta_fotos, exist_ok=True)
+    salvas, vistas = [], set()
+    for base in enderecos:
+        if len(salvas) >= maximo:
+            break
+        try:
+            pedido = urllib.request.Request(base + "=w1600-h1000-k-no", headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(pedido, timeout=20) as resposta:
+                dados = resposta.read()
+        except (urllib.error.URLError, OSError):
+            continue
+        if len(dados) < 12_000:  # ícone ou miniatura, não foto
+            continue
+        impressao = hashlib.md5(dados).hexdigest()
+        if impressao in vistas:  # a mesma foto com outro endereço
+            continue
+        vistas.add(impressao)
+        caminho = os.path.join(pasta_fotos, f"foto-{len(salvas) + 1}.jpg")
+        with open(caminho, "wb") as arquivo:
+            arquivo.write(dados)
+        salvas.append(caminho)
+    log.info("Fábrica de sites: %d fotos baixadas em %s", len(salvas), pasta_fotos)
+    return salvas
 
 
 # ---------- 3. domínio ----------
@@ -233,6 +298,165 @@ def construir_site(negocio, busca, pasta_site, modelo):
     return caminho
 
 
+# ---------- 5b. o site grande, feito pelo Claude, em loop até passar na checagem ----------
+INSTRUCOES_SITE = (
+    "Você é o web designer do JARVIS. Nesta pasta há o arquivo dados.json (dados reais de um negócio, tirados do "
+    "Google Maps) e a pasta fotos/ (fotos reais do negócio). Construa aqui o SITE COMPLETO, bonito e interativo "
+    "desse negócio, pronto para mostrar ao dono como proposta de venda. Regras:\n"
+    "- Arquivos: index.html, style.css e script.js nesta pasta. Nada de framework, npm ou build; abre direto no "
+    "navegador e funciona no GitHub Pages. Fontes do Google Fonts podem ser usadas; nenhum outro arquivo externo.\n"
+    "- Português do Brasil, celular primeiro (360px sem rolagem lateral), acessível (textos alternativos nas fotos, "
+    "contraste, navegação por teclado), carregamento leve (loading=\"lazy\" nas fotos).\n"
+    "- Seções: topo fixo com o nome e menu; abertura (hero) usando a melhor foto, com chamada forte e botão de "
+    "WhatsApp; sobre; serviços (adequados ao ramo); galeria com TODAS as fotos de fotos/ e ampliação ao clicar "
+    "(lightbox com setas e fechar no Esc); nota do Google (use a nota e o número de avaliações reais, se houver); "
+    "localização com o mapa do Google incorporado e o endereço; contato; rodapé. Botão flutuante do WhatsApp.\n"
+    "- Interatividade de verdade: menu que vira hambúrguer no celular, animações suaves ao rolar, galeria com "
+    "lightbox, botão de voltar ao topo. Use o estilo de design pedido.\n"
+    "- Links de contato: use o campo whatsapp de dados.json (https://wa.me/...) e, se não houver, o link_maps.\n"
+    "- OBRIGATÓRIO: uma faixa fina no topo dizendo 'Prévia de demonstração · site não oficial de <nome>' e "
+    "<meta name=\"robots\" content=\"noindex, nofollow\"> no head (o dono ainda não aprovou).\n"
+    "- NUNCA invente depoimentos, preços, prêmios, anos de experiência ou dados que não estejam em dados.json; "
+    "escreva textos gerais e verdadeiros para o ramo.\n"
+    "- Não mexa em nada fora desta pasta e não apague as fotos.\n"
+    "Ao terminar, responda com uma frase curta em português do Brasil, sem markdown, dizendo o que fez."
+)
+
+
+def _locais_quebrados(pasta_site, html_texto):
+    """Arquivos locais citados no site (src/href) que não existem na pasta."""
+    quebrados = []
+    for caminho in re.findall(r"""(?:src|href)\s*=\s*["']([^"'#?]+)""", html_texto):
+        if re.match(r"(?i)(?:https?:|mailto:|tel:|data:|javascript:|//)", caminho) or not caminho.strip():
+            continue
+        if not os.path.exists(os.path.join(pasta_site, urllib.parse.unquote(caminho).lstrip("./").replace("/", os.sep))):
+            quebrados.append(caminho)
+    return quebrados
+
+
+def checar_site(pasta_site, item):
+    """Lista de problemas do site (vazia = aprovado). É o que faz o loop pedir correção ao Claude."""
+    index = os.path.join(pasta_site, "index.html")
+    if not os.path.exists(index):
+        return ["não existe index.html na pasta"]
+    with open(index, encoding="utf-8", errors="replace") as arquivo:
+        texto = arquivo.read()
+    for extra in ("style.css", "script.js"):
+        if os.path.exists(os.path.join(pasta_site, extra)):
+            with open(os.path.join(pasta_site, extra), encoding="utf-8", errors="replace") as arquivo:
+                texto_extra = arquivo.read()
+            texto += texto_extra if extra == "script.js" else ""
+    problemas = []
+    if len(texto) < 9000:
+        problemas.append("o site está curto demais: faltam seções (hero, sobre, serviços, galeria, nota, localização, contato)")
+    if "noindex" not in texto:
+        problemas.append('falta <meta name="robots" content="noindex, nofollow">')
+    if "prévia" not in texto.lower() and "previa" not in texto.lower():
+        problemas.append("falta a faixa 'Prévia de demonstração · site não oficial'")
+    zap = prospeccao.whatsapp_de(item.get("telefone"))
+    if zap and f"wa.me/{zap}" not in texto:
+        problemas.append(f"os botões de contato precisam usar https://wa.me/{zap}")
+    fotos = [f for f in os.listdir(os.path.join(pasta_site, "fotos"))] if os.path.isdir(os.path.join(pasta_site, "fotos")) else []
+    usadas = [f for f in fotos if f in texto]
+    if fotos and len(usadas) < min(len(fotos), 3):
+        problemas.append(f"use as fotos de fotos/ na galeria e no topo (há {len(fotos)}, o site usa {len(usadas)})")
+    quebrados = _locais_quebrados(pasta_site, texto)
+    if quebrados:
+        problemas.append("arquivos citados que não existem: " + ", ".join(quebrados[:6]))
+    return problemas
+
+
+def site_pelo_claude(item, busca, pasta_site, modelo, avisar, tentativas=3):
+    """O Claude Code constrói o site completo; a checagem reprova e manda corrigir, até `tentativas` voltas.
+    Devolve (caminho do index.html, problemas que sobraram) ou (None, motivo) se o Claude não puder."""
+    import claude_code
+    if not claude_code.disponivel():
+        return None, ["o Claude Code não está instalado"]
+    achado = re.search(r",\s*([^,]+?)\s*-\s*[A-Z]{2}\b", item.get("endereco") or "")
+    zap = prospeccao.whatsapp_de(item.get("telefone"))
+    fotos = sorted(os.listdir(os.path.join(pasta_site, "fotos"))) if os.path.isdir(os.path.join(pasta_site, "fotos")) else []
+    dados = {
+        "nome": item["nome"], "ramo": item.get("categoria") or busca, "cidade": achado.group(1) if achado else "",
+        "endereco": item.get("endereco", ""), "telefone": item.get("telefone", ""),
+        "whatsapp": f"https://wa.me/{zap}" if zap else "", "nota_google": item.get("nota", ""),
+        "avaliacoes_google": item.get("avaliacoes", ""), "link_maps": item.get("link_maps", ""),
+        "fotos": [f"fotos/{f}" for f in fotos],
+        "estilo_de_design": f"{modelo}: {MODELOS[modelo]['descricao']} (cor de destaque {MODELOS[modelo]['destaque']})",
+    }
+    os.makedirs(pasta_site, exist_ok=True)
+    with open(os.path.join(pasta_site, "dados.json"), "w", encoding="utf-8") as arquivo:
+        json.dump(dados, arquivo, ensure_ascii=False, indent=1)
+    pedido = (f"Construa o site completo de {item['nome']} ({dados['ramo']}), no estilo {dados['estilo_de_design']}. "
+              "Leia dados.json e use as fotos da pasta fotos/.")
+    problemas = []
+    for tentativa in range(1, tentativas + 1):
+        avisar(f"Claude construindo o site ({tentativa}/{tentativas}) · {item['nome'][:40]}")
+        deu_certo, resposta = claude_code._rodar(
+            pedido, pasta_site,
+            {"instrucoes": INSTRUCOES_SITE,
+             "extras": ["--permission-mode", "acceptEdits", "--allowedTools", "Read", "Glob", "Grep", "TodoWrite"]},
+            25 * 60, avisar)
+        if not deu_certo and not os.path.exists(os.path.join(pasta_site, "index.html")):
+            return None, [f"o Claude não conseguiu ({(resposta or 'sem resposta')[:120]})"]
+        problemas = checar_site(pasta_site, item)
+        log.info("Fábrica de sites: %s, volta %d, problemas: %s", item["nome"], tentativa, problemas or "nenhum")
+        if not problemas:
+            break
+        pedido = ("A checagem automática do Jarvis reprovou o site desta pasta. Corrija TODOS estes problemas, sem "
+                  "estragar o que já está bom: " + "; ".join(problemas))
+    return os.path.join(pasta_site, "index.html"), problemas
+
+
+def site_pela_reserva(item, pasta_site, avisar, tentativas=2):
+    """Sem Claude (assinatura acabou, por exemplo): uma IA de reserva do .env escreve o site num arquivo só,
+    que passa pela mesma checagem. Devolve (caminho, problemas) ou (None, motivo)."""
+    import ia
+    if not ia.configurados():
+        return None, ["nenhuma IA de reserva configurada no .env"]
+    with open(os.path.join(pasta_site, "dados.json"), encoding="utf-8") as arquivo:
+        dados = arquivo.read()
+    instrucoes = (INSTRUCOES_SITE.replace("index.html, style.css e script.js nesta pasta",
+                                          "um único index.html com o CSS e o JavaScript dentro dele")
+              + "\nResponda SOMENTE com o código HTML completo, começando em <!doctype html>.")
+    pedido = f"dados.json:\n{dados}\n\nConstrua o site."
+    problemas = []
+    for tentativa in range(1, tentativas + 1):
+        avisar(f"IA de reserva construindo o site ({tentativa}/{tentativas}) · {item['nome'][:40]}")
+        resposta, provedor = ia.responder(pedido, instrucoes, limite=300)
+        if not resposta:
+            return None, ["as IAs de reserva não responderam"]
+        inicio = resposta.lower().find("<!doctype")
+        fim = resposta.lower().rfind("</html>")
+        if inicio < 0 or fim < 0:
+            problemas = ["a resposta não veio em HTML"]
+            continue
+        with open(os.path.join(pasta_site, "index.html"), "w", encoding="utf-8") as arquivo:
+            arquivo.write(resposta[inicio:fim + 7])
+        problemas = checar_site(pasta_site, item)
+        log.info("Fábrica de sites: %s feito pela reserva %s, problemas: %s", item["nome"], provedor, problemas or "nenhum")
+        if not problemas:
+            break
+        pedido = (f"dados.json:\n{dados}\n\nO site abaixo foi reprovado na checagem. Corrija estes problemas e "
+                  f"devolva o HTML completo: {'; '.join(problemas)}\n\n{resposta[inicio:fim + 7]}")
+    caminho = os.path.join(pasta_site, "index.html")
+    return (caminho, problemas) if os.path.exists(caminho) else (None, problemas)
+
+
+def print_do_site(caminho_html, destino):
+    """Foto do site pronto (para a página de entregas e para o zip)."""
+    navegador.abrir("file:///" + caminho_html.replace("\\", "/"))
+
+    def foto():
+        pagina = navegador._pagina()
+        pagina.wait_for_timeout(1500)
+        return navegador._foto(pagina, "png")
+
+    os.makedirs(os.path.dirname(destino), exist_ok=True)
+    with open(destino, "wb") as arquivo:
+        arquivo.write(navegador._rodar(foto, limite=60))
+    return destino
+
+
 # ---------- 6. zip ----------
 def empacotar(pasta_negocio, destino_zip):
     """Zip com o site e os prints, para entregar ao cliente ou subir em qualquer hospedagem."""
@@ -281,7 +505,11 @@ def pagina_de_entregas(execucao):
 <article>
   <h2>{n}. {e(item['nome'])}</h2>
   <p class="dados">{e(item.get('categoria') or '')} · ★ {e(item.get('nota') or '—')} · {e(item.get('telefone') or 'sem telefone')}
-     · modelo <b>{e(item['modelo'])}</b><br>{e(item.get('endereco') or '')}</p>
+     · modelo <b>{e(item['modelo'])}</b> · site feito {'pelo <b>Claude</b>' if item.get('feito_por') == 'Claude' else 'pelo modelo pronto'}
+     · {item.get('fotos', 0)} fotos<br>{e(item.get('endereco') or '')}</p>
+  {('<p class="alerta">A checagem ainda viu: ' + e('; '.join(item['problemas'])) + '</p>') if item.get('problemas') else ''}
+  <div class="prints">{''.join(f'<a href="{e(_arquivo(item[c]))}"><img src="{e(_arquivo(item[c]))}" alt="{r}"><span>{r}</span></a>'
+                               for c, r in (('print_maps', 'Google Maps'), ('print_site', 'Site pronto')) if item.get(c))}</div>
   <p class="links"><a href="{e(_arquivo(item['site']))}">Ver o site</a> · <a href="{e(_arquivo(item.get('print_maps')))}">Print do Google Maps</a>
      · <a href="{e(_arquivo(item.get('zip')))}">Zip</a> · {f'<a href="{e(_arquivo(item["video"]))}">Vídeo MP4</a>' if item.get('video') else 'sem vídeo'}</p>
   <p class="links">Domínios: {dominios or '—'}<br>No ar: {publicado}</p>
@@ -294,6 +522,10 @@ def pagina_de_entregas(execucao):
   h1 {{ color: #38e1ff; }} .aviso {{ background: #1e293b; border-left: 4px solid #f59e0b; padding: 14px 18px; margin: 18px 0 28px; }}
   article {{ background: #111a2e; border: 1px solid #1f2b45; border-radius: 16px; padding: 22px; margin-bottom: 18px; }}
   .dados {{ opacity: .75; margin: 6px 0 10px; }} a {{ color: #38e1ff; }}
+  .prints {{ display: flex; gap: 14px; flex-wrap: wrap; margin: 8px 0 12px; }}
+  .prints a {{ display: flex; flex-direction: column; gap: 4px; text-decoration: none; font-size: 13px; }}
+  .prints img {{ width: 300px; max-width: 100%; border-radius: 10px; border: 1px solid #334155; }}
+  .alerta {{ color: #fbbf24; }}
   i.livre {{ color: #4ade80; font-style: normal; }} i.registrado {{ color: #f87171; font-style: normal; }} i.não {{ color: #fbbf24; font-style: normal; }}
   textarea {{ width: 100%; min-height: 100px; margin: 12px 0; background: #0b1220; color: #e2e8f0; border: 1px solid #334155; border-radius: 10px; padding: 10px; font: inherit; }}
   .acoes {{ display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }}
@@ -335,8 +567,9 @@ def ultima_execucao():
 
 
 # ---------- tudo junto ----------
-def executar(busca, quantidade=PADRAO, ao_evento=None, gravar=True):
-    """Do Google Maps até a página de entregas (sem publicar). Devolve o resumo da execução."""
+def executar(busca, quantidade=PADRAO, ao_evento=None, gravar=True, com_claude=True):
+    """Do Google Maps até a página de entregas (sem publicar). Devolve o resumo da execução.
+    com_claude: o site completo é feito pelo Claude (minutos por site); False usa só o modelo pronto (segundos)."""
     avisar = ao_evento or (lambda t: None)
     quantidade = max(1, min(quantidade, MAXIMO))
     agora = datetime.datetime.now()
@@ -358,12 +591,39 @@ def executar(busca, quantidade=PADRAO, ao_evento=None, gravar=True):
         except Exception:
             log.warning("Fábrica de sites: sem print de %s", nome, exc_info=True)
             item["print_maps"] = ""
+        pasta_site = os.path.join(pasta_negocio, "site")
+        avisar(f"{n}/{len(negocios)} · baixando as fotos · {nome[:40]}")
+        try:  # a página do negócio ainda está aberta, do print
+            item["fotos"] = len(baixar_fotos(os.path.join(pasta_site, "fotos")))
+        except Exception:
+            log.warning("Fábrica de sites: sem fotos de %s", nome, exc_info=True)
+            item["fotos"] = 0
         avisar(f"{n}/{len(negocios)} · conferindo domínios · {nome[:40]}")
         achado = re.search(r",\s*([^,]+?)\s*-\s*[A-Z]{2}\b", negocio.get("endereco") or "")
         item["dominios"] = verificar_dominios(nome, achado.group(1) if achado else "")
         item["modelo"] = escolher_modelo(f"{negocio.get('categoria', '')} {busca}")
-        avisar(f"{n}/{len(negocios)} · construindo o site (modelo {item['modelo']}) · {nome[:40]}")
-        item["site"] = construir_site(negocio, busca, os.path.join(pasta_negocio, "site"), item["modelo"])
+        item["site"], item["problemas"], item["feito_por"] = None, [], "modelo"
+        if com_claude:
+            try:
+                item["site"], item["problemas"] = site_pelo_claude(item, busca, pasta_site, item["modelo"], avisar)
+                item["feito_por"] = "Claude" if item["site"] else "modelo"
+            except Exception:
+                log.exception("Fábrica de sites: o Claude falhou no site de %s", nome)
+            if not item["site"]:  # sem Claude: tenta uma IA de reserva (Gemini, Groq, OpenAI, Ollama)
+                try:
+                    item["site"], item["problemas"] = site_pela_reserva(item, pasta_site, avisar)
+                    item["feito_por"] = "IA de reserva" if item["site"] else "modelo"
+                except Exception:
+                    log.exception("Fábrica de sites: a IA de reserva falhou no site de %s", nome)
+        if not item["site"]:  # sem nenhuma IA: o modelo pronto garante que sempre sai um site
+            avisar(f"{n}/{len(negocios)} · montando o site pelo modelo {item['modelo']} · {nome[:40]}")
+            item["site"] = construir_site(negocio, busca, pasta_site, item["modelo"])
+            item["problemas"] = []
+        try:
+            item["print_site"] = print_do_site(item["site"], os.path.join(pasta_negocio, "prints", "site.png"))
+        except Exception:
+            log.warning("Fábrica de sites: sem print do site de %s", nome, exc_info=True)
+            item["print_site"] = ""
         item["video"] = ""
         if gravar:
             avisar(f"{n}/{len(negocios)} · gravando o vídeo · {nome[:40]}")

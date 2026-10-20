@@ -24,7 +24,20 @@ JARVIS_SMTP_PORTA=587
 JARVIS_TELEGRAM_TOKEN=
 # Seu ID numérico do Telegram (descubra falando com @userinfobot). Vários separados por vírgula.
 JARVIS_TELEGRAM_IDS=
+""" + """
+# --- IAs de reserva: usadas quando o Claude não responde (ex.: assinatura acabou) ---
+# Basta preencher UMA. Gemini e Groq têm plano grátis.
+# Gemini: https://aistudio.google.com/apikey
+GEMINI_API_KEY=
+# Groq: https://console.groq.com/keys
+GROQ_API_KEY=
+# OpenAI (pago): https://platform.openai.com/api-keys
+OPENAI_API_KEY=
+# Ollama roda no próprio PC, sem chave (https://ollama.com). Ordem de tentativa:
+JARVIS_IA_ORDEM=gemini,groq,openai,ollama
 """
+
+SECAO_RESERVA = "# --- IAs de reserva"
 
 log = logging.getLogger("jarvis")
 _cache = None
@@ -37,6 +50,12 @@ def preparar():
             arquivo.write(MODELO)
         if not os.path.exists(ENV):
             shutil.copy2(EXEMPLO, ENV)
+        else:  # .env antigo: acrescenta os campos novos (vazios), sem mexer no que o usuário já preencheu
+            with open(ENV, encoding="utf-8") as arquivo:
+                atual = arquivo.read()
+            if SECAO_RESERVA not in atual:
+                with open(ENV, "a", encoding="utf-8") as arquivo:
+                    arquivo.write("\n" + MODELO[MODELO.index(SECAO_RESERVA):])
     except OSError:
         log.warning("Não consegui preparar o .env", exc_info=True)
 

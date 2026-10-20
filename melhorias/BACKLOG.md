@@ -17,6 +17,13 @@ Regra: tudo que publica, instala, clica na tela ou apaga pede confirmação ("Co
 - [ ] 9. Ideias da pesquisa "como fazer um Jarvis" (lembretes, timer, clima, rotina...)
 
 ## Feito
+- [x] Fábrica de sites, código B/07070707 (fabrica_sites.py): negócios sem site no Maps -> print -> fotos do
+  negócio (galeria do Maps) -> domínio livre (RDAP) -> modelo de design -> site completo feito pelo Claude Code
+  com checagem automática em loop (até 3 voltas; sem Claude, IA de reserva; sem nenhuma, modelo pronto) -> print
+  do site -> vídeo MP4 (Vídeos\Jarvis\Sites) -> zip -> mensagem -> GitHub Pages com confirmação (github_pages.py,
+  precisa de `gh auth login` uma vez). "publica os sites no github" publica a última leva.
+- [x] IAs de reserva (ia.py): Gemini, Groq, OpenAI e Ollama, chaves no .env (JARVIS_IA_ORDEM). Entram quando o
+  Claude falha em conversa, resumos, ver a tela e no site da fábrica.
 - [x] 0. PDF: juntar até 100 arquivos em um PDF (botão PDF, "gera o PDF do projeto")
 - [x] 1. YouTube: "baixa o vídeo X" / "baixa a música X em mp3" / link → Vídeos\Jarvis (youtube.py, até 1080p, limite 3h)
 - [x] 2. Abas: "toca X" toca o YouTube numa aba dentro do Jarvis ("no navegador" = jeito antigo), "abre o último app"

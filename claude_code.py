@@ -227,6 +227,10 @@ def perguntar(pergunta):
         LIMITE_CONVERSA,
     )
     if not deu_certo:
+        import ia  # Claude fora do ar ou sem assinatura: tenta as IAs de reserva do .env
+        reserva, _provedor = ia.responder(_com_memoria(pergunta), INSTRUCOES_CONVERSA)
+        if reserva:
+            return reserva
         return ("Não consegui uma resposta rápida do Claude, senhor. Se o senhor quer que eu construa algo, "
                 "diga, por exemplo: cria um app de tarefas.")
     return resposta
@@ -259,11 +263,17 @@ def resumir(texto, instrucoes, limite=300):
     """O Claude lê um texto grande (ex.: legendas de vídeos) e devolve um resumo. Sem mexer em arquivos."""
     pasta = os.path.join(PROJETOS, "_conversa")
     os.makedirs(pasta, exist_ok=True)
-    return _rodar(
+    deu_certo, resposta = _rodar(
         texto, pasta,
         {"instrucoes": instrucoes, "extras": ["--model", "sonnet", "--max-turns", "2", "--allowedTools", "Read"]},
         limite,
     )
+    if not deu_certo:
+        import ia  # Claude fora do ar ou sem assinatura: tenta as IAs de reserva do .env
+        reserva, _provedor = ia.responder(texto, instrucoes, limite=limite)
+        if reserva:
+            return True, reserva
+    return deu_certo, resposta
 
 
 def autoatualizar(pedido, instrucoes, ferramentas, ao_evento, limite=40 * 60):
@@ -280,12 +290,23 @@ def autoatualizar(pedido, instrucoes, ferramentas, ao_evento, limite=40 * 60):
 
 def passo_visao(pedido, instrucoes, pasta_foto):
     """Um passo do modo tela: o Claude lê a foto da pasta e devolve a próxima ação em texto (JSON)."""
-    return _rodar(
+    deu_certo, resposta = _rodar(
         pedido, pasta_foto,
         {"instrucoes": instrucoes,
-         "extras": ["--model", "sonnet", "--max-turns", "2", "--allowedTools", "Read"]},
+         "extras": ["--model", "sonnet", "--max-turns", "3", "--allowedTools", "Read"]},
         120,
     )
+    if not deu_certo:
+        import ia  # reserva com visão (Gemini/OpenAI): a foto vai junto, já que elas não têm a ferramenta Read
+        try:
+            with open(os.path.join(pasta_foto, "jarvis_tela.png"), "rb") as arquivo:
+                foto = arquivo.read()
+        except OSError:
+            foto = None
+        reserva, _provedor = ia.responder(pedido + "\nA foto da tela vai anexada a esta mensagem.", instrucoes, foto)
+        if reserva:
+            return True, reserva
+    return deu_certo, resposta
 
 
 def _configuracao(tipo):
