@@ -120,6 +120,27 @@
     font-size: 12px; background: rgba(5, 11, 22, .9); border: 1px solid var(--borda-forte); pointer-events: none;
   }
 
+  /* mini notebook: a tela real ao vivo, com controle de verdade */
+  #paginas > .nb.ativa { display: flex; flex-direction: column; background: #050b16; }
+  .nb.controlando { border-color: var(--alerta); box-shadow: 0 0 0 2px rgba(245,158,11,.5), 0 0 30px rgba(245,158,11,.25); }
+  .nb-barra { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--borda); }
+  .nb-barra b { font-size: 12px; letter-spacing: .2em; color: var(--cor2); }
+  .nb-selo { display: none; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px;
+             background: rgba(245,158,11,.18); color: var(--alerta); animation: pisca 1.2s infinite; }
+  .nb.controlando .nb-selo { display: inline-block; }
+  .nb-barra .espaco { flex: 1; }
+  .nb-barra button, .nb-baixo button { height: 30px; min-width: 32px; padding: 0 10px; border-radius: 8px; font-size: 12px;
+                                       border: 1px solid var(--borda-forte); background: rgba(13,24,44,.9); }
+  .nb-barra button:hover, .nb-baixo button:hover { border-color: var(--cor); }
+  .nb-area { position: relative; flex: 1; min-height: 0; cursor: crosshair; }
+  .nb-area img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .nb-baixo { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--borda); flex-wrap: wrap; }
+  .nb-baixo input { flex: 1; min-width: 160px; height: 30px; padding: 0 10px; border-radius: 8px; outline: none;
+                    background: rgba(5,11,22,.9); border: 1px solid var(--borda-forte); }
+  .nb-baixo input:focus { border-color: var(--cor); }
+  .nb-log { list-style: none; max-height: 64px; overflow-y: auto; padding: 0 10px 8px; font-size: 11px; color: var(--suave); }
+  .nb-log li b { color: var(--cor2); font-weight: 600; margin-right: 6px; }
+
   #bolha { text-align: center; max-width: 680px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
   #bolha-rotulo { font-size: 11px; font-weight: 600; letter-spacing: .3em; color: var(--cor2); text-transform: uppercase; }
   #bolha-texto { font-size: 22px; font-weight: 600; line-height: 1.3; animation: surge .35s ease-out; }
@@ -919,15 +940,17 @@
     lista: [],          // {id, titulo, url, tipo, externo, botao, quadro}
     ativa: "jarvis",
     MAX: 6,
-    ICONES: { youtube: "▶", projeto: "◆", pdf: "📄", site: "🌐", navegador: "🖥" },
+    ICONES: { youtube: "▶", projeto: "◆", pdf: "📄", site: "🌐", navegador: "🖥", notebook: "💻" },
     abrir(titulo, url, tipo = "site", externo = null) {
       const existente = this.lista.find((a) => a.url === url);
       if (existente) return this.mostrar(existente.id);
-      if (this.lista.length >= this.MAX) this.fechar(this.lista.find((a) => a.tipo !== "navegador").id);
+      if (this.lista.length >= this.MAX) this.fechar(this.lista.find((a) => !["navegador", "notebook"].includes(a.tipo)).id);
       const id = "aba" + Date.now();
       let quadro;
       if (tipo === "navegador") {
         quadro = mini.criar();
+      } else if (tipo === "notebook") {
+        quadro = nb.criar();
       } else {
         quadro = document.createElement("iframe");
         quadro.src = url;
@@ -945,8 +968,10 @@
       fora.title = "Abrir no navegador";
       fora.onclick = (e) => {
         e.stopPropagation();
+        if (tipo === "notebook") return pywebview.api.abrir_notebook_flutuante();
         pywebview.api.abrir_no_navegador(tipo === "navegador" ? mini.url : (externo || url));
       };
+      if (tipo === "notebook") fora.title = "Notebook flutuante, sempre por cima";
       const fechar = document.createElement("i");
       fechar.textContent = "✕";
       fechar.title = "Fechar aba";
@@ -1120,6 +1145,149 @@
   jarvis.abrirNavegador = () => mini.abrir();
   jarvis.fecharNavegador = () => mini.fechar();
 
+  // ---------- mini notebook: a tela REAL do notebook ao vivo; cliques e teclas acontecem de verdade ----------
+  const nb = {
+    info: null, el: null, img: null, rodando: false, numero: "", fila: Promise.resolve(), cliqueAgendado: null,
+    URL_ABA: "jarvis://mini-notebook",
+    aba() { return abas.lista.find((a) => a.tipo === "notebook"); },
+    criar() {
+      const el = document.createElement("div");
+      el.className = "nb";
+      el.innerHTML = `
+        <div class="nb-barra">
+          <b>MINI NOTEBOOK</b><span class="nb-selo">BRAGA CONTROLANDO</span><span class="espaco"></span>
+          <button data-nb="pausar" title="Pausar ou retomar o Braga">⏸ Pausar</button>
+          <button data-nb="parar" title="Parar a tarefa do Braga">■ Parar</button>
+          <label class="check" title="Freio: jogar o mouse no canto superior esquerdo para tudo"><input type="checkbox" class="nb-freio" checked> Freio</label>
+          <button data-nb="flutuante" title="Notebook flutuante, sempre por cima">⧉</button>
+        </div>
+        <div class="nb-area" title="Clique, clique duplo, botão direito e rodinha acontecem de verdade no notebook">
+          <img alt=""><div class="mini-aviso">ligando a captura…</div>
+        </div>
+        <div class="nb-baixo">
+          <input class="nb-digitar" placeholder="Digitar no notebook (Enter envia)" autocomplete="off">
+          <button data-tecla="win" title="Tecla Windows">⊞</button><button data-tecla="enter">Enter</button>
+          <button data-tecla="tab">Tab</button><button data-tecla="esc">Esc</button><button data-tecla="backspace">⌫</button>
+          <input class="nb-pedir" placeholder="Pedir ao Braga (ou corrigir enquanto ele age)" autocomplete="off">
+        </div>
+        <ol class="nb-log"></ol>`;
+      this.el = el;
+      this.img = el.querySelector("img");
+      const area = el.querySelector(".nb-area");
+      area.addEventListener("click", (e) => {
+        const p = this.ponto(e);
+        if (!p) return;
+        clearTimeout(this.cliqueAgendado);  // espera um pouco: se vier o segundo clique, vira clique duplo
+        this.cliqueAgendado = setTimeout(() => this.acao("clicar", p), 260);
+      });
+      area.addEventListener("dblclick", (e) => {
+        clearTimeout(this.cliqueAgendado);
+        const p = this.ponto(e);
+        if (p) this.acao("duplo", p);
+      });
+      area.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        const p = this.ponto(e);
+        if (p) this.acao("direito", p);
+      });
+      let rolagem = 0, agendada = false;
+      area.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        rolagem += e.deltaY;
+        if (agendada) return;
+        agendada = true;
+        setTimeout(() => { this.acao("rolar", null, Math.round(rolagem)); rolagem = 0; agendada = false; }, 150);
+      }, { passive: false });
+      el.querySelector('[data-nb="pausar"]').onclick = () => this.acao(this.estado?.pausado ? "retomar" : "pausar");
+      el.querySelector('[data-nb="parar"]').onclick = () => this.acao("parar");
+      el.querySelector('[data-nb="flutuante"]').onclick = () => pywebview.api.abrir_notebook_flutuante();
+      el.querySelector(".nb-freio").onchange = (e) => this.acao("freio", null, e.target.checked);
+      el.querySelectorAll("[data-tecla]").forEach((b) => (b.onclick = () => this.acao("tecla", null, b.dataset.tecla)));
+      const digitar = el.querySelector(".nb-digitar");
+      digitar.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" || !digitar.value) return;
+        this.acao("digitar", null, digitar.value);
+        digitar.value = "";
+      });
+      const pedir = el.querySelector(".nb-pedir");
+      pedir.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" || !pedir.value.trim()) return;
+        if (this.estado?.controlando) this.acao("corrigir", null, pedir.value.trim());
+        else enviar("no notebook, " + pedir.value.trim());
+        pedir.value = "";
+      });
+      return el;
+    },
+    // ponto do clique de 0 a 1 na tela real, descontando as faixas pretas do object-fit: contain
+    ponto(e) {
+      if (!this.img.naturalWidth) return null;
+      const r = this.img.getBoundingClientRect();
+      const escala = Math.min(r.width / this.img.naturalWidth, r.height / this.img.naturalHeight);
+      const x = (e.clientX - r.left - (r.width - this.img.naturalWidth * escala) / 2) / (this.img.naturalWidth * escala);
+      const y = (e.clientY - r.top - (r.height - this.img.naturalHeight * escala) / 2) / (this.img.naturalHeight * escala);
+      if (x < 0 || y < 0 || x > 1 || y > 1) return null;
+      return { x, y };
+    },
+    acao(tipo, p = null, valor = null) {
+      this.fila = this.fila
+        .then(() => pywebview.api.notebook_acao(tipo, p?.x ?? null, p?.y ?? null, valor))
+        .then((estado) => { this.mostrarEstado(estado); if (estado?.erro) avisar("Notebook: " + estado.erro); })
+        .catch(() => {});
+    },
+    mostrarEstado(estado) {
+      if (!estado || !this.el) return;
+      this.estado = estado;
+      this.el.classList.toggle("controlando", !!estado.controlando);
+      this.el.querySelector('[data-nb="pausar"]').textContent = estado.pausado ? "▶ Retomar" : "⏸ Pausar";
+      if (estado.freio !== undefined) this.el.querySelector(".nb-freio").checked = !!estado.freio;
+      const log = this.el.querySelector(".nb-log");
+      log.innerHTML = "";
+      for (const a of (estado.acoes || []).slice(0, 12)) {
+        const li = document.createElement("li");
+        li.innerHTML = `<b>${a.hora}</b>`;
+        li.append(a.texto);
+        log.append(li);
+      }
+    },
+    quadros() {
+      if (this.rodando) return;
+      this.rodando = true;
+      let ultimoEstado = 0;
+      const proximo = async () => {
+        const aba = this.aba();
+        if (!aba) { this.rodando = false; return; }
+        if (abas.ativa !== aba.id) { setTimeout(proximo, 500); return; }
+        let espera = 50;
+        try {
+          const r = await fetch(`${this.info.quadro}?n=${this.numero}&t=${Date.now()}`, { cache: "no-store" });
+          if (!r.ok) throw new Error(r.status);
+          this.numero = r.headers.get("X-Quadro") || "";
+          if (r.status === 200) {
+            const imagem = URL.createObjectURL(await r.blob()), antiga = this.img.src;
+            this.img.src = imagem;
+            if (antiga.startsWith("blob:")) setTimeout(() => URL.revokeObjectURL(antiga), 1000);
+            const a = this.el.querySelector(".mini-aviso");
+            if (a) a.remove();
+          }
+        } catch (e) { espera = 800; }
+        if (Date.now() - ultimoEstado > 1000) {
+          ultimoEstado = Date.now();
+          pywebview.api.notebook_estado().then((s) => this.mostrarEstado(s)).catch(() => {});
+        }
+        setTimeout(proximo, espera);
+      };
+      proximo();
+    },
+    async abrir() {
+      if (!this.info) this.info = await pywebview.api.notebook_info();
+      if (!this.aba()) abas.abrir("Mini notebook", this.URL_ABA, "notebook");
+      else abas.mostrar(this.aba().id);
+      this.mostrarEstado(this.info);
+      this.quadros();
+    },
+  };
+  jarvis.abrirNotebook = () => nb.abrir();
+
   // ---------- painel do sistema ----------
   async function atualizarStatus() {
     try {
@@ -1178,11 +1346,7 @@
   document.querySelectorAll("[data-cmd]").forEach((b) => (b.onclick = () => enviar(b.dataset.cmd)));
   document.querySelectorAll("[data-preencher]").forEach((b) => (b.onclick = () => preencher(b.dataset.preencher)));
   $("#btn-busca").onclick = () => preencher("pesquisa no bing ");
-  $("#btn-notebook").onclick = () => {
-    if (pywebview.api.notebook_info) return enviar("abre o mini notebook");
-    avisar("O mini notebook (a tela real do notebook com controle de verdade) está pronto em código, mas ainda " +
-           "espera a sua liberação no Claude Code. Enquanto isso, use: \"usa a tela e …\" para eu agir na tela.");
-  };
+  $("#btn-notebook").onclick = () => nb.abrir();
   $("#btn-700").onclick = () => {
     const nicho = $("#nicho-700").value.trim();
     if (!nicho) return $("#nicho-700").focus();

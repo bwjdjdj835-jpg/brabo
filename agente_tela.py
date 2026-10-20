@@ -16,6 +16,7 @@ import tela
 
 MAX_PASSOS = 10
 MAX_PASSOS_NAVEGADOR = 15
+MAX_PASSOS_NOTEBOOK = 20
 
 INSTRUCOES = (
     "Você é os olhos e as mãos do BRAGA, operando a tela do computador do usuário para cumprir uma tarefa. "
@@ -33,6 +34,14 @@ INSTRUCOES = (
     "transferir, confirmar compra ou excluir, nem digitar senhas, números de cartão ou documentos. "
     "Se a tarefa chegar num desses pontos, pare com acao 'concluir', concluido true e um resumo dizendo que o "
     "usuário precisa terminar esse passo. Quando a tarefa for cumprida, use acao 'concluir' com um resumo útil."
+)
+
+DICAS_NOTEBOOK = (
+    "\nVocê está no MINI NOTEBOOK do Braga: a tela real do Windows 11 do usuário. Para abrir um programa ou uma "
+    "tela de configurações, o caminho mais certo é: acao 'tecla' com 'win', depois 'digitar' o nome (ex.: "
+    "'WhatsApp', 'Bloco de Notas', 'Configurações de som') e 'tecla' 'enter'. Espere ('esperar') o programa "
+    "abrir antes de clicar nele. A janela do Braga pode aparecer na foto: não clique nela, ela não é a tarefa. "
+    "Se chegar uma CORREÇÃO DO USUÁRIO, siga a correção."
 )
 
 INSTRUCOES_NAVEGADOR = INSTRUCOES.replace(
@@ -72,16 +81,25 @@ def executar_tarefa(tarefa, ao_evento=None, alvo=None):
     Devolve (deu_certo, resumo)."""
     alvo = alvo or tela
     navegador = hasattr(alvo, "abrir")
-    instrucoes = INSTRUCOES_NAVEGADOR if navegador else INSTRUCOES
-    max_passos = MAX_PASSOS_NAVEGADOR if navegador else MAX_PASSOS
+    sessao = getattr(alvo, "sessao", None)  # mini notebook: o senhor pode pausar, parar e corrigir no meio
+    instrucoes = INSTRUCOES_NAVEGADOR if navegador else INSTRUCOES + DICAS_NOTEBOOK if sessao else INSTRUCOES
+    max_passos = MAX_PASSOS_NAVEGADOR if navegador else MAX_PASSOS_NOTEBOOK if sessao else MAX_PASSOS
     alvo.preparar()
     historico = []
+    correcoes = []
     for passo in range(1, max_passos + 1):
+        if sessao:
+            if not sessao.continuar():
+                return False, "Parei, senhor, como pediu."
+            correcoes += sessao.correcoes_novas()
         caminho, largura, altura = alvo.capturar()
         pasta_foto = os.path.dirname(caminho)
         contexto = ""
         if historico:
             contexto = "Ações já feitas: " + "; ".join(historico[-6:]) + ".\n"
+        if correcoes:
+            contexto += ("CORREÇÕES DO USUÁRIO (valem mais que o pedido original): " + "; ".join(correcoes[-4:])
+                         + ".\n")
         itens = []
         if navegador:
             pagina = alvo.estado()
@@ -118,6 +136,10 @@ def executar_tarefa(tarefa, ao_evento=None, alvo=None):
         if ao_evento:
             ao_evento(fala)
         log.info("Modo tela passo %d: %s | %s", passo, acao.get("acao"), fala)
+        if sessao:
+            sessao.registrar(f"Passo {passo}: {fala}")
+            if not sessao.continuar():  # pausou ou parou enquanto a IA pensava
+                return False, "Parei, senhor, como pediu."
 
         if acao.get("concluido") or acao.get("acao") == "concluir":
             return True, acao.get("resumo") or "Pronto, senhor."
@@ -130,9 +152,9 @@ def executar_tarefa(tarefa, ao_evento=None, alvo=None):
         historico.append(" ".join(str(p) for p in (
             acao.get("acao"), acao.get("_alvo") or "", acao.get("texto") or acao.get("tecla") or acao.get("url") or "")
             if p).strip())
-        if navegador:
+        if navegador or sessao:
             import time
-            time.sleep(0.8)  # dá tempo de a página reagir antes da próxima foto
+            time.sleep(0.8)  # dá tempo de a página (ou o programa) reagir antes da próxima foto
 
     return True, "Cheguei ao limite de passos, senhor. Veja como ficou a tela."
 

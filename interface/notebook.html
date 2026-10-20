@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Braga · notebook</title>
+<style>
+  :root { --cor: #3d8bff; --cor2: #60a5fa; --fundo: #050b16; --texto: #e6eefc; --suave: #8ea3c4; --alerta: #f59e0b; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; background: var(--fundo); color: var(--texto);
+               font: 12px "Segoe UI", system-ui, sans-serif; user-select: none; }
+  body { display: flex; flex-direction: column; border: 1px solid var(--cor); }
+  body.controlando { border: 2px solid var(--alerta); }
+  .barra { display: flex; align-items: center; gap: 4px; height: 28px; padding: 0 4px 0 8px; cursor: move;
+           background: linear-gradient(90deg, rgba(61,139,255,.22), rgba(5,11,22,.95)); }
+  .barra b { color: var(--cor2); letter-spacing: .14em; font-size: 11px; }
+  .selo { display: none; font-size: 10px; font-weight: 700; color: var(--alerta); animation: pisca 1.2s infinite; }
+  body.controlando .selo { display: inline; }
+  @keyframes pisca { 50% { opacity: .3; } }
+  .barra .espaco { flex: 1; }
+  .barra button { height: 22px; min-width: 24px; padding: 0 5px; border: 0; border-radius: 4px; background: transparent;
+                  color: var(--texto); cursor: pointer; font-size: 12px; }
+  .barra button:hover { background: rgba(61,139,255,.25); }
+  .barra button.ligado { color: #22c55e; }
+  .tela { position: relative; flex: 1; min-height: 0; cursor: crosshair; }
+  .tela img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .aviso { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); opacity: .7; pointer-events: none; }
+  #ultima { height: 20px; padding: 2px 8px; font-size: 11px; color: var(--suave); white-space: nowrap; overflow: hidden;
+            text-overflow: ellipsis; border-top: 1px solid rgba(96,165,250,.15); }
+</style>
+</head>
+<body>
+  <!-- pywebview-drag-region: arrastar a janelinha pela barra -->
+  <div class="barra pywebview-drag-region">
+    <b>NOTEBOOK</b><span class="selo">● BRAGA CONTROLANDO</span><span class="espaco"></span>
+    <button id="pausar" title="Pausar ou retomar o Braga">⏸</button>
+    <button id="parar" title="Parar a tarefa do Braga">■</button>
+    <button id="freio" title="Freio: mouse no canto superior esquerdo para tudo">🛑</button>
+    <button id="principal" title="Abrir a janela principal">⤢</button>
+    <button id="fechar" title="Fechar o notebook flutuante">✕</button>
+  </div>
+  <div class="tela" id="tela" title="Clique e rodinha acontecem de verdade no notebook">
+    <img id="img" alt=""><div class="aviso" id="aviso">ligando…</div>
+  </div>
+  <div id="ultima">Pronto.</div>
+<script>
+  const $ = (s) => document.querySelector(s);
+  let info = null, estado = {}, fila = Promise.resolve(), numero = "";
+  const mostrar = (s) => {
+    if (!s) return;
+    estado = s;
+    document.body.classList.toggle("controlando", !!s.controlando);
+    $("#pausar").textContent = s.pausado ? "▶" : "⏸";
+    if (s.freio !== undefined) {
+      $("#freio").classList.toggle("ligado", !!s.freio);
+      $("#freio").title = "Freio do canto " + (s.freio ? "ligado" : "desligado") + " (clique para trocar)";
+    }
+    const a = (s.acoes || [])[0];
+    $("#ultima").textContent = s.erro ? "Erro: " + s.erro : a ? `${a.hora} · ${a.texto}` : "Pronto.";
+  };
+  const acao = (tipo, p = null, valor = null) => {
+    fila = fila.then(() => pywebview.api.notebook_acao(tipo, p?.x ?? null, p?.y ?? null, valor)).then(mostrar).catch(() => {});
+  };
+  // ponto de 0 a 1 na tela real, descontando as faixas pretas do "contain"
+  const ponto = (e) => {
+    const img = $("#img"), r = img.getBoundingClientRect();
+    if (!img.naturalWidth) return null;
+    const escala = Math.min(r.width / img.naturalWidth, r.height / img.naturalHeight);
+    const x = (e.clientX - r.left - (r.width - img.naturalWidth * escala) / 2) / (img.naturalWidth * escala);
+    const y = (e.clientY - r.top - (r.height - img.naturalHeight * escala) / 2) / (img.naturalHeight * escala);
+    return x < 0 || y < 0 || x > 1 || y > 1 ? null : { x, y };
+  };
+  let agendado = null;
+  $("#tela").addEventListener("click", (e) => {
+    const p = ponto(e);
+    if (!p) return;
+    clearTimeout(agendado);
+    agendado = setTimeout(() => acao("clicar", p), 260);
+  });
+  $("#tela").addEventListener("dblclick", (e) => { clearTimeout(agendado); const p = ponto(e); if (p) acao("duplo", p); });
+  $("#tela").addEventListener("contextmenu", (e) => { e.preventDefault(); const p = ponto(e); if (p) acao("direito", p); });
+  let rolagem = 0, rolando = false;
+  $("#tela").addEventListener("wheel", (e) => {
+    e.preventDefault(); rolagem += e.deltaY;
+    if (rolando) return; rolando = true;
+    setTimeout(() => { acao("rolar", null, Math.round(rolagem)); rolagem = 0; rolando = false; }, 150);
+  }, { passive: false });
+  $("#pausar").onclick = () => acao(estado.pausado ? "retomar" : "pausar");
+  $("#parar").onclick = () => acao("parar");
+  $("#freio").onclick = () => acao("freio", null, !estado.freio);
+  $("#principal").onclick = () => pywebview.api.mostrar_principal();
+  $("#fechar").onclick = () => pywebview.api.fechar_notebook_flutuante();
+
+  async function quadros() {
+    let espera = 60;
+    try {
+      const r = await fetch(`${info.quadro}?n=${numero}&t=${Date.now()}`, { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      numero = r.headers.get("X-Quadro") || "";
+      if (r.status === 200) {
+        const nova = URL.createObjectURL(await r.blob()), antiga = $("#img").src;
+        $("#img").src = nova;
+        $("#aviso").hidden = true;
+        if (antiga.startsWith("blob:")) setTimeout(() => URL.revokeObjectURL(antiga), 1000);
+      }
+    } catch (e) { espera = 1000; }
+    setTimeout(quadros, espera);
+  }
+  async function iniciar() {
+    info = await pywebview.api.notebook_info();
+    mostrar(info);
+    quadros();
+    setInterval(() => pywebview.api.notebook_estado().then(mostrar).catch(() => {}), 1000);
+  }
+  window.addEventListener("pywebviewready", iniciar);
+  if (window.pywebview && window.pywebview.api && window.pywebview.api.notebook_info) iniciar();
+</script>
+</body>
+</html>

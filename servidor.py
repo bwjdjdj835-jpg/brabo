@@ -34,7 +34,34 @@ class _Manipulador(http.server.SimpleHTTPRequestHandler):
         # imagem ao vivo da mini tela; o token impede outros programas e sites de pegarem a imagem
         if urllib.parse.urlsplit(self.path).path == f"/navegador/{TOKEN}/quadro.jpg":
             return self._quadro_navegador()
+        if urllib.parse.urlsplit(self.path).path == f"/tela/{TOKEN}/quadro.jpg":
+            return self._quadro_notebook()
         return super().do_GET()
+
+    def _quadro_notebook(self):
+        """Tela real do notebook ao vivo (mini notebook). 204 quando ainda não há quadro novo."""
+        import notebook
+        consulta = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        try:
+            imagem = notebook.captura.quadro()
+        except Exception:
+            log.debug("Mini notebook: falha na captura", exc_info=True)
+            imagem = None
+        if not imagem:
+            self.send_error(503)
+            return
+        numero = str(notebook.captura.numero)
+        if consulta.get("n", [""])[0] == numero:
+            self.send_response(204)
+            self.send_header("X-Quadro", numero)
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "image/jpeg")
+        self.send_header("Content-Length", str(len(imagem)))
+        self.send_header("X-Quadro", numero)
+        self.end_headers()
+        self.wfile.write(imagem)
 
     def _quadro_navegador(self):
         import navegador

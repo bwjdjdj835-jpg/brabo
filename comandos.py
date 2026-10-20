@@ -605,6 +605,22 @@ def executar(comando, mini_tela=False, url_mini=""):
         return {"acao": "autoatualizar", "pedido": original}
 
     # ----- modo tela: o Jarvis vê a tela e age nela (clicar, digitar, rolar) -----
+    # mini notebook: a tela real ao vivo; o Braga age nela de verdade (ferramenta controlar_notebook)
+    if (re.search(r"\b(?:abr\w*|mostr\w*|lig\w*|ve|ver)\s+(?:o\s+|meu\s+)?(?:mini\s+)?notebook\b", t)
+            and len(t.split()) <= 6):
+        return {"acao": "notebook_abrir", "flutuante": tem("flutuante", "pequeno", "por cima")}
+    controle_nb = re.match(r"^(paus\w*|par\w*|continu\w*|retom\w*)\s+(?:o\s+)?(?:controle\s+do\s+)?(?:mini\s+)?notebook\b", t)
+    if controle_nb:
+        verbo = controle_nb.group(1)
+        tipo = "pausar" if verbo.startswith("paus") else "parar" if verbo.startswith("par") else "retomar"
+        return {"acao": "notebook_controle", "tipo": tipo}
+    correcao = re.match(r"^(?:corrig\w*|correcao)\s+(?:no\s+)?(?:mini\s+)?notebook[,:\s]+(.+)", t)
+    if correcao:
+        return {"acao": "notebook_controle", "tipo": "corrigir", "texto": _com_acentos(correcao.group(1), t, original)}
+    no_notebook = re.match(r"^(?:no|na|pelo|usa\w*\s+o|controla\w*\s+o)\s+(?:mini\s+)?notebook[,:\s]+(?:e\s+)?(.+)", t)
+    if no_notebook:
+        return {"acao": "modo_tela", "tarefa": _com_acentos(no_notebook.group(1), t, original)}
+
     gatilho_tela = re.search(
         r"\b(ve|vê|veja|olha|olhe|controla|controle|assume|assuma|usa|use)\s+(a\s+|na\s+|minha\s+)?tela\b"
         r"|\bmodo\s+tela\b|\bna\s+tela\b|\bclica\w*\b|\bclique\b|faz voce mesmo|faca voce mesmo", t)

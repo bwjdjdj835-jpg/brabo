@@ -437,6 +437,63 @@ class Jarvis:
             log.warning("Mini tela: falha em %s", tipo, exc_info=True)
             return {"erro": str(erro)[:200]}
 
+    # ---------- mini notebook: a tela real do notebook ao vivo, com mouse e teclado de verdade ----------
+    def notebook_info(self):
+        import notebook
+        return {"quadro": f"/tela/{servidor.TOKEN}/quadro.jpg", **notebook.info(), **notebook.sessao.estado()}
+
+    def notebook_estado(self):
+        import notebook
+        return {**notebook.sessao.estado(), "freio": notebook.controle.freio}
+
+    def notebook_acao(self, tipo, x=None, y=None, valor=None):
+        """Cliques, rolagem, teclas e os botões pausar/parar/freio vindos do mini notebook."""
+        import notebook
+        try:
+            estado = notebook.executar(tipo, x, y, valor)
+        except Exception as erro:  # inclui o freio do canto (pyautogui.FailSafeException)
+            log.warning("Mini notebook: falha em %s", tipo, exc_info=True)
+            estado = {**notebook.sessao.estado(), "erro": str(erro)[:200]}
+        return {**estado, "freio": notebook.controle.freio}
+
+    def abrir_notebook_flutuante(self):
+        """Notebook flutuante: a tela real em miniatura, sempre por cima, com pausar/parar e o registro."""
+        import notebook
+        if getattr(self, "_nb", None) is not None:
+            try:
+                self._nb.restore()
+                self._nb.show()
+                return "O notebook flutuante já está aberto, senhor."
+            except Exception:
+                self._nb = None
+        largura, altura = 460, 340
+        try:
+            tela_principal = webview.screens[0]
+            x, y = tela_principal.width - largura - 24, tela_principal.height - altura - 64
+        except Exception:
+            x, y = None, None
+        self._nb = webview.create_window(
+            notebook.TITULO_FLUTUANTE, servidor.iniciar() + "/interface/notebook.html", js_api=self,
+            width=largura, height=altura, x=x, y=y, min_size=(300, 220), on_top=True, frameless=True,
+            easy_drag=False, background_color="#050b16")
+        self._nb.events.closed += lambda: setattr(self, "_nb", None)
+        return "Abri o notebook flutuante, senhor. Ele fica por cima das outras janelas."
+
+    def fechar_notebook_flutuante(self):
+        if getattr(self, "_nb", None) is not None:
+            janela, self._nb = self._nb, None
+            janela.destroy()
+        return "Fechei o notebook flutuante, senhor."
+
+    def _notebook_controle(self, tipo, texto=""):
+        """Voz: "pausa o notebook", "continua o notebook", "para o notebook", correções no meio da tarefa."""
+        import notebook
+        if not notebook.sessao.controlando:
+            return "Não estou controlando o notebook agora, senhor."
+        notebook.executar(tipo, valor=texto)
+        return {"pausar": "Pausei, senhor. Diga continua o notebook quando quiser.", "retomar": "Continuando, senhor.",
+                "parar": "Parando, senhor.", "corrigir": "Entendi a correção, senhor."}.get(tipo, "Feito, senhor.")
+
     def _abrir_mini_tela(self, alvo, buscador="bing"):
         """Abre um site (ou uma busca, no Bing por padrão) no navegador do Jarvis e mostra a mini tela."""
         import navegador
@@ -1067,6 +1124,13 @@ class Jarvis:
             return self._modo_fundo(pedido["ligar"])
         if acao == "modo_tela":
             return self._modo_tela(pedido["tarefa"])
+        if acao == "notebook_abrir":
+            if pedido.get("flutuante"):
+                return self.abrir_notebook_flutuante()
+            self._ui("abrirNotebook")
+            return "Abri o mini notebook, senhor. O que o senhor fizer nele acontece de verdade no notebook."
+        if acao == "notebook_controle":
+            return self._notebook_controle(pedido["tipo"], pedido.get("texto", ""))
         if acao == "biblioteca_apagar":
             return self._preparar_apagar(pedido["texto"])
         if acao == "abrir_biblioteca":
@@ -1597,32 +1661,47 @@ class Jarvis:
         return fala + " Quer que eu peça ao Claude para corrigir?"
 
     def _modo_tela(self, tarefa):
-        """O Jarvis vê a tela e age nela, passo a passo, falando o que faz."""
+        """Ferramenta controlar_notebook: o Braga vê a tela real e age nela (mouse e teclado de verdade), passo a
+        passo, no mini notebook. O senhor pode pausar, parar ou corrigir no meio (botões ou voz)."""
+        import notebook
+        if notebook.sessao.controlando:
+            if tarefa.strip():  # pedido novo no meio da tarefa = correção
+                return self._notebook_controle("corrigir", tarefa)
+            return "Já estou controlando o notebook, senhor. Diga: para o notebook, ou mande a correção."
         if claude_code.ocupado():
             return "Ainda estou com outra tarefa, senhor. Aguarde eu terminar."
         if not tarefa.strip():
-            return "O que o senhor quer que eu faça na tela?"
+            return "O que o senhor quer que eu faça no notebook?"
 
         def trabalho():
             import agente_tela
-            self._ui("tarefa", "Controlando a tela", tarefa)
-
-            def ao_evento(fala):
-                self._ui("atividade", fala)
-
+            import pyautogui
+            notebook.sessao.comecar(tarefa)
+            self._ui("tarefa", "Controlando o notebook", tarefa)
+            self.abrir_notebook_flutuante()
+            time.sleep(0.8)
             try:
-                deu_certo, resumo = agente_tela.executar_tarefa(tarefa, ao_evento)
+                self._janela.minimize()  # a janela grande sairia na foto e na frente dos cliques
             except Exception:
-                log.exception("Falha no modo tela")
-                deu_certo, resumo = False, "Não consegui controlar a tela, senhor."
+                log.debug("Não consegui minimizar a janela principal", exc_info=True)
+            time.sleep(0.5)
+            try:
+                deu_certo, resumo = agente_tela.executar_tarefa(
+                    tarefa, lambda fala: self._ui("atividade", fala), alvo=notebook.alvo)
+            except pyautogui.FailSafeException:
+                resumo = "Parei, senhor: o mouse foi para o canto da tela, o freio de segurança."
+            except Exception:
+                log.exception("Falha no mini notebook")
+                resumo = "Não consegui controlar o notebook, senhor."
+            notebook.sessao.terminar(resumo)
             self._ui("tarefa", None, None)
             with self._trava:
                 self._falar(resumo)
                 self._estado_parado()
 
         threading.Thread(target=trabalho, daemon=True).start()
-        return ("Entendido, senhor. Vou olhar a tela e fazer isso. "
-                "Se quiser que eu pare na hora, jogue o mouse para o canto superior esquerdo.")
+        return ("Entendido, senhor. Vou fazer isso no notebook. Acompanhe no notebook flutuante: "
+                "lá dá para pausar, parar ou corrigir. Freio: mouse no canto superior esquerdo.")
 
     def _modo_fundo(self, ligar):
         import fundo
