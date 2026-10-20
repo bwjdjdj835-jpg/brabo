@@ -18,8 +18,9 @@ import urllib.request
 import segredos
 
 ORDEM_PADRAO = "gemini,groq,openai,ollama"
-MODELOS_PADRAO = {"gemini": "gemini-2.5-flash", "groq": "llama-3.3-70b-versatile", "openai": "gpt-4o-mini",
+MODELOS_PADRAO = {"gemini": "gemini-2.5-flash", "groq": "openai/gpt-oss-120b", "openai": "gpt-4o-mini",
                   "ollama": "llama3.2"}
+GROQ_VISAO = "qwen/qwen3.8-27b"  # modelo do Groq que enxerga imagens (JARVIS_GROQ_VISAO no .env troca)
 LIMITE_TEXTO = {"gemini": 400_000, "groq": 60_000, "openai": 200_000, "ollama": 20_000}  # caracteres
 
 log = logging.getLogger("jarvis")
@@ -63,6 +64,17 @@ def _post(url, corpo, cabecalhos, limite):
         return json.loads(resposta.read().decode("utf-8"))
 
 
+def _jpeg_pequeno(imagem_png, largura=1280):
+    import io
+    from PIL import Image
+    imagem = Image.open(io.BytesIO(imagem_png)).convert("RGB")
+    if imagem.width > largura:
+        imagem = imagem.resize((largura, round(imagem.height * largura / imagem.width)))
+    saida = io.BytesIO()
+    imagem.save(saida, "JPEG", quality=75)
+    return saida.getvalue()
+
+
 def _chamar(provedor, sistema, texto, imagem_png=None, limite=120):
     texto = texto[:LIMITE_TEXTO[provedor]]
     modelo = _modelo(provedor)
@@ -78,10 +90,14 @@ def _chamar(provedor, sistema, texto, imagem_png=None, limite=120):
         return "".join(p.get("text", "") for p in dados["candidates"][0]["content"]["parts"]).strip()
     if provedor in ("groq", "openai"):
         conteudo = texto
-        if imagem_png and provedor == "openai":
+        if imagem_png:
+            tipo, dados_imagem = "image/png", imagem_png
+            if provedor == "groq":  # o Groq aceita imagens pequenas: vai em JPEG, no máximo 1280 de largura
+                modelo = segredos.obter("JARVIS_GROQ_VISAO", GROQ_VISAO)
+                tipo, dados_imagem = "image/jpeg", _jpeg_pequeno(imagem_png)
             conteudo = [{"type": "text", "text": texto},
                         {"type": "image_url",
-                         "image_url": {"url": "data:image/png;base64," + base64.b64encode(imagem_png).decode()}}]
+                         "image_url": {"url": f"data:{tipo};base64," + base64.b64encode(dados_imagem).decode()}}]
         mensagens = ([{"role": "system", "content": sistema}] if sistema else []) + [{"role": "user", "content": conteudo}]
         url = ("https://api.groq.com/openai/v1/chat/completions" if provedor == "groq"
                else "https://api.openai.com/v1/chat/completions")
@@ -97,9 +113,9 @@ def _chamar(provedor, sistema, texto, imagem_png=None, limite=120):
 
 def responder(texto, sistema="", imagem_png=None, limite=120):
     """Pergunta às IAs de reserva, uma de cada vez, até uma responder. Devolve (texto, provedor) ou (None, None).
-    Com imagem, só as que enxergam imagens (Gemini e OpenAI)."""
+    Com imagem, só as que enxergam imagens (Gemini, Groq pelo modelo de visão e OpenAI)."""
     for provedor in configurados():
-        if imagem_png and provedor not in ("gemini", "openai"):
+        if imagem_png and provedor not in ("gemini", "groq", "openai"):
             continue
         try:
             resposta = _chamar(provedor, sistema, texto, imagem_png, limite)
