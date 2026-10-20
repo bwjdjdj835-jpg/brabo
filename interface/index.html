@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<title>J.A.R.V.I.S.</title>
+<title>B.R.A.G.A.</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Rajdhani:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -254,7 +254,7 @@
 <div class="hud">
   <header>
     <div class="marca">SISTEMA ONLINE<b>Just A Rather Very Intelligent System</b></div>
-    <h1>J.A.R.V.I.S.</h1>
+    <h1>B.R.A.G.A.</h1>
     <div class="relogio"><div id="hora">--:--:--</div><div id="data"></div></div>
   </header>
 
@@ -288,7 +288,7 @@
         <b></b><span></span>
         <div class="cmd-linha"><button class="mini" id="cmd-salvar">SALVAR</button><button class="mini" id="cmd-cancelar">CANCELAR</button></div>
       </div>
-      <ul id="comandos"><li class="vazia">Invente um comando acima, ou diga: Jarvis, cria um comando…</li></ul>
+      <ul id="comandos"><li class="vazia">Invente um comando acima, ou diga: Braga, cria um comando…</li></ul>
     </section>
   </aside>
 
@@ -301,15 +301,16 @@
       <button data-cmd="abre o github">GitHub</button>
       <button data-cmd="abre o último app">Último app</button>
       <button data-cmd="faz engenharia do apk mais recente">Engenharia APK</button>
-      <button data-cmd="gera o pdf do projeto jarvis">PDF do Jarvis</button>
-      <button data-cmd="abre a mini tela" title="Navegador da Microsoft (Edge + Bing) dentro do Jarvis">Mini tela</button>
+      <button data-cmd="gera o pdf do projeto jarvis">PDF do Braga</button>
+      <button data-cmd="abre a mini tela" title="Navegador da Microsoft (Edge + Bing) dentro do Braga">Mini tela</button>
+      <button data-cmd="abre a mini tela flutuante" title="Janelinha pequena, sempre por cima das outras janelas">Mini tela flutuante</button>
     </div>
     <div id="abas" hidden></div>
     <div class="reator">
       <div id="paginas"></div>
       <canvas id="orb3d"></canvas>
-      <div id="bolha" title="Clique (ou aperte Espaço) para falar sem dizer Jarvis">
-        <div id="bolha-rotulo">J.A.R.V.I.S.</div>
+      <div id="bolha" title="Clique (ou aperte Espaço) para falar sem dizer Braga">
+        <div id="bolha-rotulo">B.R.A.G.A.</div>
         <div id="bolha-texto">Inicializando sistemas</div>
       </div>
     </div>
@@ -358,7 +359,7 @@
     <button id="clipe" title="Anexar arquivos e fotos à biblioteca">
       <svg viewBox="0 0 24 24"><path d="M21 11.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9"/></svg>
     </button>
-    <input id="entrada" placeholder='Fale "Jarvis, ..." , digite, cole um link ou um print' autocomplete="off">
+    <input id="entrada" placeholder='Fale "Braga, ..." , digite, cole um link ou um print' autocomplete="off">
     <button id="enviar">ENVIAR</button>
     <button id="stop" title="Parar ou voltar a ouvir">■ STOP</button>
     <span class="atalho">ESPAÇO · FALAR &nbsp; F11 · TELA CHEIA</span>
@@ -416,14 +417,14 @@
     if (estadoAtual === "offline") return bolha("SEM CONEXÃO", "Não consigo ouvir sem internet. Pode digitar, senhor.");
     if (estadoAtual === "sem-microfone") return bolha("ATENÇÃO", "Não encontrei um microfone. Pode digitar, senhor.");
     if (tarefaAtiva) return bolha("CLAUDE · TRABALHANDO", ultimaAtividade || "Preparando");
-    bolha("J.A.R.V.I.S.", "Diga “Jarvis” ou clique aqui para falar");
+    bolha("B.R.A.G.A.", "Diga “Braga” ou clique aqui para falar");
   }
   setInterval(bolhaPadrao, 2000);
 
   // ---------- registro ----------
   function registrar(quem, texto) {
     const li = document.createElement("li");
-    li.className = quem === "Jarvis" ? "jarvis" : "";
+    li.className = quem === "Braga" ? "jarvis" : "";
     const hora = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
     li.innerHTML = `<small>${quem.toUpperCase()} · ${hora}</small>`;
     li.append(texto);
@@ -669,7 +670,7 @@
     },
     voceDisse(t) { registrar("Você", t); $("#ouvi").textContent = ""; },
     ouviu(t) { $("#ouvi").textContent = "ouvi: " + t; },
-    falaTexto(t) { bolha("JARVIS", t); registrar("Jarvis", t); falaRecente = Date.now(); },
+    falaTexto(t) { bolha("BRAGA", t); registrar("Braga", t); falaRecente = Date.now(); },
     tocarAudio(b64) { tocar(b64); },
     micEstado(ligado) { $("#mic").classList.toggle("desligado", !ligado); $("#mic-texto").textContent = ligado ? "ligado" : "desligado"; },
     bip() { bip(); },
@@ -723,7 +724,7 @@
       ul.innerHTML = "";
       $("#cmd-proposto").hidden = true;
       if (!lista || !lista.length) {
-        ul.innerHTML = '<li class="vazia">Invente um comando acima, ou diga: Jarvis, cria um comando…</li>';
+        ul.innerHTML = '<li class="vazia">Invente um comando acima, ou diga: Braga, cria um comando…</li>';
         return;
       }
       for (const c of lista) {
@@ -822,7 +823,7 @@
   };
   abas.botaoJarvis = document.createElement("button");
   abas.botaoJarvis.className = "aba ativa";
-  abas.botaoJarvis.innerHTML = "<span>◉ JARVIS</span>";
+  abas.botaoJarvis.innerHTML = "<span>◉ BRAGA</span>";
   abas.botaoJarvis.onclick = () => abas.mostrar("jarvis");
   $("#abas").append(abas.botaoJarvis);
 

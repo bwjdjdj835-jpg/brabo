@@ -329,7 +329,7 @@ def pacote_de_envio(pasta, titulo, itens, textos, pagina_html=None):
     return pasta
 
 
-def atalho_na_area_de_trabalho(pasta, nome="Jarvis - Envios"):
+def atalho_na_area_de_trabalho(pasta, nome="Braga - Envios"):
     """Atalho na Área de Trabalho para a pasta (sempre o mesmo nome, apontando para a última). Devolve o caminho."""
     try:
         import winreg

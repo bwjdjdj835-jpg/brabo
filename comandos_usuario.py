@@ -56,7 +56,7 @@ EXEMPLOS_DE_FRASES = (
 )
 
 INSTRUCOES_CRIAR = (
-    "Você transforma o pedido do usuário num COMANDO PERSONALIZADO do JARVIS, o assistente de voz dele (Windows, "
+    "Você transforma o pedido do usuário num COMANDO PERSONALIZADO do BRAGA, o assistente de voz dele (Windows, "
     "português do Brasil). Responda SOMENTE com um JSON válido, sem texto antes ou depois:\n"
     '{"nome": "nome curto", "frases": ["frase de ativação"], "acao": {...}, '
     '"descricao": "uma frase curta em pt-BR, sem markdown, dizendo o que o comando faz (o Jarvis vai ler em voz alta)"}\n'

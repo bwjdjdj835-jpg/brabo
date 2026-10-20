@@ -18,7 +18,7 @@ MAX_PASSOS = 10
 MAX_PASSOS_NAVEGADOR = 15
 
 INSTRUCOES = (
-    "Você é os olhos e as mãos do JARVIS, operando a tela do computador do usuário para cumprir uma tarefa. "
+    "Você é os olhos e as mãos do BRAGA, operando a tela do computador do usuário para cumprir uma tarefa. "
     "A cada passo chega uma foto da tela (arquivo jarvis_tela.png nesta pasta) com a largura e a altura em pixels. "
     "Abra a foto com Read, veja o que está na tela e decida UMA ação. "
     "Responda SOMENTE com um JSON (sem texto antes ou depois) neste formato:\n"
@@ -40,7 +40,7 @@ INSTRUCOES_NAVEGADOR = INSTRUCOES.replace(
     "Decida UMA ação. Quase sempre a lista de elementos que vem no pedido basta, e decidir sem abrir a foto é "
     "bem mais rápido: só abra a foto com Read se a lista não deixar claro o que fazer (página em branco, lista "
     "vazia, imagem, captcha, ou para conferir o resultado). ") + (
-    "\nVocê está operando a MINI TELA do Jarvis: um navegador Edge de 1280 por 800 pixels (a foto é a página "
+    "\nVocê está operando a MINI TELA do Braga: um navegador Edge de 1280 por 800 pixels (a foto é a página "
     "inteira visível, sem barra de endereço). Há uma ação a mais: 'abrir', com o campo \"url\" (um endereço como "
     "https://... ou um texto para buscar no Bing, a busca da Microsoft). Use 'abrir' em vez de procurar uma "
     "barra de endereço. "

@@ -27,7 +27,7 @@ CARACTERES_POR_VIDEO = 20_000
 GIT = ["git", "-c", "user.name=Jarvis", "-c", "user.email=jarvis@localhost"]
 
 INSTRUCOES_RESUMO = (
-    "Você é o pesquisador do JARVIS, um assistente de voz para Windows feito em Python (pywebview, "
+    "Você é o pesquisador do BRAGA, um assistente de voz para Windows feito em Python (pywebview, "
     "SpeechRecognition, edge-tts, Claude Code). O usuário quer que o Jarvis aprenda com vídeos do YouTube. "
     "Você vai receber as legendas de alguns vídeos. Escreva em português do Brasil, em markdown:\n"
     "1. A primeira linha exatamente assim: 'RESUMO_FALADO: ' seguido de no máximo duas frases curtas, sem markdown, "
@@ -39,7 +39,7 @@ INSTRUCOES_RESUMO = (
 )
 
 INSTRUCOES_AUTO = (
-    "Você é o Claude Code atualizando o próprio JARVIS, o assistente de voz do usuário, a pedido dele. "
+    "Você é o Claude Code atualizando o próprio BRAGA, o assistente de voz do usuário, a pedido dele. "
     "A pasta atual é o código do Jarvis (app.py é o principal, comandos.py entende as frases, interface/index.html "
     "é a tela). Leia antes os arquivos que vai mexer e siga o estilo deles: português, nomes em português, "
     "comentários curtos. Regras:\n"

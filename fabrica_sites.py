@@ -300,7 +300,7 @@ def construir_site(negocio, busca, pasta_site, modelo):
 
 # ---------- 5b. o site grande, feito pelo Claude, em loop até passar na checagem ----------
 INSTRUCOES_SITE = (
-    "Você é o web designer do JARVIS. Nesta pasta há o arquivo dados.json (dados reais de um negócio, tirados do "
+    "Você é o web designer do BRAGA. Nesta pasta há o arquivo dados.json (dados reais de um negócio, tirados do "
     "Google Maps) e a pasta fotos/ (fotos reais do negócio). Construa aqui o SITE COMPLETO, bonito e interativo "
     "desse negócio, pronto para mostrar ao dono como proposta de venda. Regras:\n"
     "- Arquivos: index.html, style.css e script.js nesta pasta. Nada de framework, npm ou build; abre direto no "

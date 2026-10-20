@@ -80,7 +80,9 @@ AJUDA = (
     "que lembra o senhor de beber água. "
     "Leio as notícias, faço o briefing do dia, abro qualquer programa instalado "
     "e conto os últimos erros do meu registro, oferecendo pedir ao Claude para corrigir. "
-    "É só dizer, por exemplo: Jarvis, cria um site de portfólio."
+    "Mando a mensagem da prospecção no WhatsApp, um contato por vez e só com o seu sim: diga conecta o whatsapp "
+    "e depois manda pro próximo. E tenho a mini tela flutuante, que fica por cima das outras janelas. "
+    "É só dizer, por exemplo: Braga, cria um site de portfólio."
 )
 
 VERBOS_BUSCA = r"\b(?:pesquis\w*|procur\w*|busc\w*|googl\w*)\b"
@@ -269,6 +271,12 @@ def _mini_tela(t, original, ativa=False, url=""):
     microsoft = re.search(rf"^(?:pode\s+)?{_VERBO_BUSCAR}\s+(?:no bing|na microsoft|no edge)\s+(?:por\s+|sobre\s+)?(.+)", t)
     if microsoft:
         return {"acao": "navegador_abrir", "alvo": _com_acentos(microsoft.group(1), t, original), "buscador": "bing"}
+    # mini tela flutuante: a janelinha pequena que fica por cima de tudo
+    if re.search(r"\b(?:flutuante|pequen\w*|por cima|janelinha|em cima)\b", t) and re.search(
+            r"\b(?:tela|telinha|janela|janelinha|navegador)\b", t):
+        if re.search(r"\b(?:fech\w*|tira\w*|some\w*|esconde\w*|deslig\w*)\b", t):
+            return {"acao": "pip_fechar"}
+        return {"acao": "pip_abrir"}
     citou = re.search(rf"\b(?:{_MINI})\b", t)
     no_fim = re.search(rf"\s+(?:{_MINI}|aqui)$", t)
     if citou and re.search(r"\b(?:fech\w*|deslig\w*|encerr\w*|sai\w*)\b", t):
@@ -510,6 +518,21 @@ def executar(comando, mini_tela=False, url_mini=""):
             and not tem("app", "aplicativo", "site", "projeto", "apk", "email", "pagina", "jogo")):
         return {"acao": "erros"}
 
+    # ----- WhatsApp: um contato por vez, da última prospecção, sempre com confirmação -----
+    if tem("whatsapp", "zap", "wpp") and tem(r"conect\w*", r"log\w*", r"entr\w*", "qr", "qr code") \
+            and not tem(r"mand\w*", r"envi\w*"):
+        return {"acao": "whatsapp_conectar"}
+    envio = re.match(r"^(?:pode\s+|agora\s+)*(?:mand\w*|envi\w*)\b(.*)$", t)
+    if envio and (tem("whatsapp", "zap", "wpp", r"proxim\w*", "contato") or re.search(r"\b(?:pro|pra|para o|para a)\b", t)) \
+            and not tem("email", "e-mail", "imeiu", "telegram"):
+        resto = envio.group(1)
+        alvo = re.search(r"\b(?:pro|pra|para|ao|a|o)\s+(?!video|mensagem)(.+?)(?:\s+(?:no|pelo|via)\s+(?:zap|whatsapp|wpp))?$",
+                         resto)
+        alvo = alvo.group(1) if alvo else ("proximo" if tem(r"proxim\w*") else "")
+        if alvo or tem(r"proxim\w*"):
+            return {"acao": "whatsapp_enviar", "alvo": re.sub(r"^(?:o|a)\s+", "", alvo).strip(),
+                    "com_video": tem("video", "videos", "tudo", "os dois")}
+
     # ----- pasta dos vídeos MP4 (Vídeos\Jarvis, no notebook) -----
     if (tem("videos", "video", "mp4") and tem("pasta", "onde", r"cade", r"mostr\w*", r"salv\w*", "ficam", "estao")
             and not tem(r"baix\w*", r"resum\w*", r"relatori\w*", "toca", "youtube")):
@@ -739,7 +762,7 @@ def executar(comando, mini_tela=False, url_mini=""):
     if tem(r"obrigad\w*", "valeu"):
         return random.choice(["Às ordens, senhor.", "Disponha.", "Sempre um prazer, senhor."])
     if tem("quem e voce", "seu nome", "quem e vc"):
-        return "Eu sou o Jarvis, seu assistente pessoal. Estou aqui para cuidar do seu notebook."
+        return "Eu sou o Braga, seu assistente pessoal. Estou aqui para cuidar do seu notebook."
     if tem("tudo bem", "como voce esta", "como vai"):
         return "Funcionando a cem por cento, senhor. E o senhor?"
     if tem("ajuda", "o que voce sabe", "o que voce faz", "o que voce pode", "comandos"):

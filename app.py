@@ -37,6 +37,7 @@ import claude_code
 import engenharia
 import enviar_email
 import memoria
+import identidade
 import segredos
 import servidor
 import telegram_bot
@@ -46,16 +47,21 @@ PASTA = os.path.dirname(os.path.abspath(__file__))
 DISCO = os.environ.get("SystemDrive", "C:") + "\\"
 VOZ = "pt-BR-AntonioNeural"
 
-# O reconhecimento de voz às vezes escreve "Jarvis" de outros jeitos
-VARIACOES = re.compile(r"(jarv\w*|djarv\w*|jerv\w*|javis|jarbas|jar|jorge|jarviz|chaves|charles)")
-SAIR = re.compile(r"^(pode\s+)?(se\s+)?(fecha\w*|encerr\w*|desativ\w*|sair|descansa\w*|desliga\w*)(\s+(o\s+)?jarvis)?$")
+# O reconhecimento de voz às vezes escreve "Jarvis" e "Braga" de outros jeitos
+VARIACOES = re.compile(r"(jarv\w*|djarv\w*|jerv\w*|javis|jarbas|jar|jorge|jarviz|chaves|charles"
+                       r"|braga|bragas|bragga|draga|braca)")
+SAIR = re.compile(r"^(pode\s+)?(se\s+)?(fecha\w*|encerr\w*|desativ\w*|sair|descansa\w*|desliga\w*)"
+                  r"(\s+(o\s+)?(jarvis|braga))?$")
 RECALIBRAR_A_CADA = 180  # segundos
 
 log = logging.getLogger("jarvis")
 
 
 def _eh_jarvis(palavra):
-    return bool(VARIACOES.fullmatch(palavra)) or difflib.SequenceMatcher(None, palavra, "jarvis").ratio() >= 0.7
+    """A palavra é o chamado do assistente ("Braga" ou "Jarvis", com os jeitos que o reconhecimento escreve)?"""
+    return (bool(VARIACOES.fullmatch(palavra))
+            or difflib.SequenceMatcher(None, palavra, "jarvis").ratio() >= 0.7
+            or difflib.SequenceMatcher(None, palavra, "braga").ratio() >= 0.8)
 
 
 # Palavras que podem vir antes do chamado: "ei Jarvis", "ok Jarvis", "bom dia Jarvis"
@@ -226,6 +232,119 @@ class Jarvis:
         if url:
             self._url_mini = str(url)
 
+    # ---------- WhatsApp: um contato por vez, com o "sim" do senhor ----------
+    def _whatsapp_conectar(self):
+        """Abre o WhatsApp Web na mini tela (e na flutuante) para o senhor ler o QR Code uma vez."""
+        def trabalho():
+            import whatsapp
+            try:
+                self._aba_ativa = "navegador"
+                self._ui("abrirNavegador")
+                estado = whatsapp.situacao()
+                self.abrir_pip()
+                fala = {"logado": "O WhatsApp está conectado, senhor. Já posso mandar as mensagens quando o senhor pedir.",
+                        "qr": "Aparece um QR Code na mini tela. No celular, abra o WhatsApp, toque em Aparelhos "
+                              "conectados, depois em Conectar um aparelho, e aponte para a mini tela."}.get(
+                    estado, "O WhatsApp Web ainda está carregando na mini tela, senhor. Espere um pouco e pergunte de novo.")
+            except Exception as erro:
+                log.exception("WhatsApp: falha ao conectar")
+                fala = f"Não consegui abrir o WhatsApp Web, senhor. {str(erro)[:120]}"
+            with self._trava:
+                self._falar(fala)
+                self._estado_parado()
+
+        threading.Thread(target=trabalho, daemon=True).start()
+        return "Abrindo o WhatsApp Web na mini tela, senhor."
+
+    def _whatsapp_preparar(self, alvo, com_video):
+        """Mostra para quem vai e o quê, e só envia depois do "sim". Um contato por pedido."""
+        import whatsapp
+        pasta, contato = whatsapp.achar_em_todas(alvo)
+        if not pasta:
+            return "Ainda não tenho contatos, senhor. Faça antes uma prospecção ou a fábrica de sites."
+        if not contato:
+            return ("Não achei esse contato na última lista, senhor. Diga o nome, o número dele na lista, "
+                    "ou: manda pro próximo.")
+        if not contato.get("whatsapp"):
+            return f"{contato['nome']} não tem celular no Google Maps, senhor. Esse precisa ser por ligação."
+        if contato.get("enviado"):
+            return f"Já mandei para {contato['nome']} em {contato['enviado']}, senhor. Não vou mandar de novo."
+        if whatsapp.enviados_hoje() >= whatsapp.LIMITE_POR_DIA:
+            return (f"Já foram {whatsapp.LIMITE_POR_DIA} mensagens hoje, senhor. Paro por aqui para o WhatsApp não "
+                    "bloquear o seu número. Amanhã continuo.")
+        video = os.path.join(pasta, contato["video"]) if com_video and contato.get("video") else None
+        if com_video and not (video and os.path.exists(video)):
+            return f"Não achei o vídeo de {contato['nome']} na pasta, senhor. Posso mandar só a mensagem."
+
+        def enviar():
+            def trabalho():
+                self._ui("tarefa", "WhatsApp", contato["nome"])
+                try:
+                    whatsapp.enviar(contato, contato["mensagem"], video)
+                    whatsapp.marcar_enviado(pasta, contato, video)
+                    fala = f"Mensagem enviada para {contato['nome']}, senhor" + (", com o vídeo." if video else ".")
+                except Exception as erro:
+                    log.exception("WhatsApp: falha ao enviar para %s", contato["nome"])
+                    fala = f"Não consegui mandar para {contato['nome']}, senhor: {str(erro)[:150]}"
+                self._ui("tarefa", None, None)
+                with self._trava:
+                    self._falar(fala)
+                    self._estado_parado()
+
+            self._aba_ativa = "navegador"
+            self._ui("abrirNavegador")
+            threading.Thread(target=trabalho, daemon=True).start()
+            return "Mandando, senhor. Acompanhe na mini tela."
+
+        self._pendente = enviar
+        self._ui("nota", f"✆ {contato['nome']} · {contato['telefone']}\n{contato['mensagem']}"
+                         + (f"\n+ vídeo {contato['video']}" if video else ""))
+        return (f"Vou mandar para {contato['nome']}, {contato['telefone']}, a mensagem perguntando se quer ver a "
+                f"prévia do site{', e o vídeo' if video else ''}. Confirma?")
+
+    # ---------- mini tela flutuante: janelinha sempre por cima, com o navegador do Braga ao vivo ----------
+    def abrir_pip(self):
+        """Abre (ou traz para a frente) a mini tela flutuante, no canto de baixo à direita."""
+        import navegador
+        if getattr(self, "_pip", None) is not None:
+            try:
+                self._pip.restore()
+                self._pip.show()
+                return "A mini tela flutuante já está aberta, senhor."
+            except Exception:
+                self._pip = None
+        try:
+            navegador.preparar()
+        except Exception as erro:
+            log.warning("Mini tela flutuante: navegador não ligou", exc_info=True)
+            return f"Não consegui ligar o navegador, senhor. {str(erro)[:120]}"
+        largura, altura = 440, 300
+        try:
+            tela = webview.screens[0]
+            x, y = tela.width - largura - 24, tela.height - altura - 64  # acima da barra de tarefas
+        except Exception:
+            x, y = None, None
+        self._pip = webview.create_window(
+            "Braga · mini tela", servidor.iniciar() + "/interface/pip.html", js_api=self,
+            width=largura, height=altura, x=x, y=y, min_size=(260, 180), on_top=True, frameless=True,
+            easy_drag=False, background_color="#020a12")
+        self._pip.events.closed += lambda: setattr(self, "_pip", None)
+        return "Abri a mini tela flutuante, senhor. Ela fica por cima das outras janelas; arraste pela barrinha."
+
+    def fechar_pip(self):
+        if getattr(self, "_pip", None) is not None:
+            janela, self._pip = self._pip, None
+            janela.destroy()
+        return "Fechei a mini tela flutuante, senhor."
+
+    def mostrar_principal(self):
+        """Botão ⤢ da mini tela flutuante: traz a janela principal do Braga para a frente."""
+        try:
+            self._janela.restore()
+            self._janela.show()
+        except Exception:
+            log.debug("Não consegui trazer a janela principal", exc_info=True)
+
     def navegador_info(self):
         import navegador
         return {"quadro": f"/navegador/{servidor.TOKEN}/quadro.jpg",
@@ -297,7 +416,7 @@ class Jarvis:
                 atalho = self._entregar_pasta(r["pasta_envio"])
                 fala = (f"Pronto, senhor. Encontrei {r['negocios']} comércios, fiz as prévias e gravei {r['videos']} "
                         f"vídeos em MP4. {r['com_whatsapp']} têm celular para WhatsApp. Abri a pasta de envios"
-                        f"{' e criei o atalho Jarvis Envios na área de trabalho' if atalho else ''}: lá estão os "
+                        f"{f' e criei o atalho {identidade.NOME} Envios na área de trabalho' if atalho else ''}: lá estão os "
                         "vídeos e o arquivo Contatos para enviar, com os números e as mensagens. Envie um por um.")
             except Exception as erro:
                 log.exception("Falha na prospecção: %s", busca)
@@ -352,7 +471,7 @@ class Jarvis:
                 livres = sum(1 for i in r["itens"] if any(d["situacao"] == "livre" for d in i["dominios"]))
                 fala = (f"Pronto, senhor. Achei {len(r['itens'])} negócios sem site e fiz um site para cada um, com print, "
                         f"zip e {videos} vídeos em MP4. {livres} têm domínio livre. Abri a pasta de envios"
-                        f"{' e criei o atalho Jarvis Envios na área de trabalho' if atalho else ''}: lá estão os "
+                        f"{f' e criei o atalho {identidade.NOME} Envios na área de trabalho' if atalho else ''}: lá estão os "
                         "vídeos e o arquivo Contatos para enviar.")
             except Exception as erro:
                 log.exception("Falha na fábrica de sites: %s", busca)
@@ -590,7 +709,7 @@ class Jarvis:
     def _falar(self, texto, lembrar=True):
         log.info("Jarvis: %s", texto)
         if lembrar:
-            memoria.registrar_fala("Jarvis", texto)
+            memoria.registrar_fala(identidade.NOME, texto)
         self._mudar_estado("falando")
         self._ui("falaTexto", texto)
         try:
@@ -761,6 +880,14 @@ class Jarvis:
             return f"O senhor tem {len(meus)} comando{'s' if len(meus) > 1 else ''}: {nomes}."
         if acao == "navegador_abrir":
             return self._abrir_mini_tela(pedido["alvo"], pedido.get("buscador", "bing"))
+        if acao == "whatsapp_conectar":
+            return self._whatsapp_conectar()
+        if acao == "whatsapp_enviar":
+            return self._whatsapp_preparar(pedido["alvo"], pedido.get("com_video", False))
+        if acao == "pip_abrir":
+            return self.abrir_pip()
+        if acao == "pip_fechar":
+            return self.fechar_pip()
         if acao == "abrir_videos":
             import prospeccao
             pasta = os.path.join(prospeccao.pasta_videos(), "Jarvis")
@@ -1030,7 +1157,7 @@ class Jarvis:
                 falado, caminho = autoestudo.resumir_videos(busca, quantidade, lambda t: self._ui("atividade", t))
                 self._ui("nota", caminho)
                 fala = (f"Pronto, senhor. {falado} Guardei o resumo e as ideias na pasta melhorias. "
-                        "Se quiser, diga: Jarvis, se atualiza com as ideias.")
+                        f"Se quiser, diga: {identidade.NOME}, se atualiza com as ideias.")
             except Exception as erro:
                 log.exception("Falha ao resumir os vídeos de %s", busca)
                 fala = f"Não consegui resumir os vídeos, senhor. {erro}"
@@ -1580,7 +1707,7 @@ def main():
         log.exception("Servidor local falhou; abrindo a interface direto do arquivo (YouTube nas abas não toca)")
         interface = os.path.join(PASTA, "interface", "index.html")
     janela = webview.create_window(
-        "J.A.R.V.I.S.",
+        identidade.SIGLA,
         interface,
         js_api=jarvis,
         maximized=True,
@@ -1609,7 +1736,7 @@ def _sou_o_unico():
             _trava_unica = trava
             return True
         kernel32.CloseHandle(ctypes.c_void_p(trava))
-        janela = user32.FindWindowW(None, "J.A.R.V.I.S.")
+        janela = user32.FindWindowW(None, identidade.SIGLA)
         if janela and not reaberto:
             user32.ShowWindow(janela, 9)  # 9 = restaurar, se estiver minimizada
             user32.SetForegroundWindow(janela)

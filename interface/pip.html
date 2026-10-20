@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Braga · mini tela</title>
+<style>
+  :root { --cor: #38e1ff; --fundo: #020a12; --texto: #d8f6ff; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; background: var(--fundo); color: var(--texto);
+               font: 12px "Segoe UI", system-ui, sans-serif; user-select: none; }
+  body { display: flex; flex-direction: column; border: 1px solid var(--cor); }
+  .barra { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 4px 0 8px;
+           background: linear-gradient(90deg, rgba(56,225,255,.18), rgba(2,10,18,.9)); cursor: move; }
+  .barra b { color: var(--cor); letter-spacing: .14em; font-size: 11px; }
+  .barra span { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; opacity: .75; }
+  .barra button { width: 22px; height: 20px; border: 0; background: transparent; color: var(--texto);
+                  cursor: pointer; font-size: 13px; border-radius: 3px; }
+  .barra button:hover { background: rgba(56,225,255,.2); }
+  .tela { position: relative; flex: 1; min-height: 0; cursor: pointer; }
+  .tela img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .aviso { position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%); padding: 2px 8px;
+           background: rgba(2,10,18,.85); border: 1px solid rgba(56,225,255,.3); pointer-events: none; }
+</style>
+</head>
+<body>
+  <!-- pywebview-drag-region: arrastar a janelinha pela barra -->
+  <div class="barra pywebview-drag-region">
+    <b>BRAGA</b><span id="titulo">mini tela</span>
+    <button id="voltar" title="Voltar">←</button>
+    <button id="principal" title="Abrir a janela principal">⤢</button>
+    <button id="fechar" title="Fechar a mini tela flutuante">✕</button>
+  </div>
+  <div class="tela" id="tela" title="Clique para usar o site">
+    <img id="img" alt="">
+    <div class="aviso" id="aviso">ligando…</div>
+  </div>
+<script>
+  const $ = (s) => document.querySelector(s);
+  let info = null, fila = Promise.resolve();
+  const acao = (tipo, valor = null, extra = null) => {
+    fila = fila.then(() => pywebview.api.navegador_acao(tipo, valor, extra))
+      .then((e) => { if (e && e.titulo) $("#titulo").textContent = e.titulo; }).catch(() => {});
+  };
+  // mesma conta da mini tela grande: tira as faixas pretas do "contain" e converte para 1280x800
+  $("#tela").addEventListener("mousedown", (e) => {
+    const img = $("#img"), r = img.getBoundingClientRect();
+    if (!info || !img.naturalWidth) return;
+    const escala = Math.min(r.width / info.largura, r.height / info.altura);
+    const x = (e.clientX - r.left - (r.width - info.largura * escala) / 2) / escala;
+    const y = (e.clientY - r.top - (r.height - info.altura * escala) / 2) / escala;
+    if (x >= 0 && y >= 0 && x <= info.largura && y <= info.altura) acao("clicar", Math.round(x), Math.round(y));
+  });
+  let rolagem = 0, agendada = false;
+  $("#tela").addEventListener("wheel", (e) => {
+    e.preventDefault(); rolagem += e.deltaY;
+    if (agendada) return; agendada = true;
+    setTimeout(() => { acao("rolar", Math.round(rolagem)); rolagem = 0; agendada = false; }, 120);
+  }, { passive: false });
+  $("#voltar").onclick = () => acao("voltar");
+  $("#principal").onclick = () => pywebview.api.mostrar_principal();
+  $("#fechar").onclick = () => pywebview.api.fechar_pip();
+
+  async function quadros() {
+    let espera = 250;
+    try {
+      const r = await fetch(`${info.quadro}?t=${Date.now()}`, { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      const nova = URL.createObjectURL(await r.blob()), antiga = $("#img").src;
+      $("#img").src = nova;
+      if (antiga.startsWith("blob:")) setTimeout(() => URL.revokeObjectURL(antiga), 1000);
+      const carregando = r.headers.get("X-Carregando") === "1";
+      $("#aviso").textContent = "carregando…";
+      $("#aviso").hidden = !carregando;
+      if (carregando) espera = 500;
+    } catch (e) { espera = 1000; }
+    setTimeout(quadros, espera);
+  }
+  async function iniciar() {
+    info = await pywebview.api.navegador_info();
+    acao("estado");
+    quadros();
+  }
+  window.addEventListener("pywebviewready", iniciar);
+  if (window.pywebview && window.pywebview.api && window.pywebview.api.navegador_info) iniciar();
+</script>
+</body>
+</html>

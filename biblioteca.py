@@ -62,7 +62,7 @@ Preencha do seu jeito. O Jarvis e o Claude usam estas informações em todos os 
 """
 
 INSTRUCOES = (
-    "Você é o bibliotecário do JARVIS, o assistente do usuário. O usuário mandou um material para a biblioteca, "
+    "Você é o bibliotecário do BRAGA, o assistente do usuário. O usuário mandou um material para a biblioteca, "
     "que serve de referência quando o Claude criar apps e sites para ele. Abra o material indicado e responda "
     "SOMENTE com um resumo em português do Brasil, em texto simples, de no máximo 8 linhas: o que é e tudo o que "
     "for útil para criar apps (telas, layout, cores, fontes, textos, funcionalidades, regras de negócio, dados da "

@@ -19,7 +19,7 @@ IDS = os.path.join(PASTA, "telegram_ids.json")
 API = "https://api.telegram.org/bot{token}/{metodo}"
 
 AJUDA = (
-    "Comandos do Jarvis:\n"
+    "Comandos do Braga:\n"
     "/status — como está o notebook\n"
     "/ajuda — esta mensagem\n\n"
     "Ou mande o que quiser, igual à voz:\n"
@@ -101,7 +101,7 @@ class TelegramBot:
     def _comando(self, texto):
         baixo = texto.lower()
         if baixo in ("/start", "/ajuda", "/help", "/menu"):
-            return "Olá, senhor. Sou o Jarvis.\n\n" + AJUDA
+            return "Olá, senhor. Sou o Braga.\n\n" + AJUDA
         if baixo == "/status":
             s = self._status()
             d = s.get("detalhes", {})

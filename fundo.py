@@ -24,7 +24,7 @@ user32.SetWindowLongW.restype = wintypes.LONG
 user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
 user32.SetWindowPos.restype = wintypes.BOOL
 
-TITULO = "J.A.R.V.I.S."
+TITULO = __import__("identidade").SIGLA
 WM_SPAWN_WORKER = 0x052C
 SMTO_NORMAL = 0
 SWP_NOACTIVATE = 0x0010

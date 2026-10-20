@@ -21,7 +21,7 @@ CARACTERES_POR_LEGENDA = 12_000
 MAX_VIDEOS = 200
 
 INSTRUCOES = (
-    "Você é o analista do JARVIS. Vai receber os dados de vídeos de uma playlist ou busca do YouTube: título, "
+    "Você é o analista do BRAGA. Vai receber os dados de vídeos de uma playlist ou busca do YouTube: título, "
     "canal, descrição e, em alguns, a legenda (o que é falado). Escreva em português do Brasil e responda "
     "SOMENTE com um JSON válido, sem texto antes ou depois, neste formato:\n"
     '{"falado": "uma ou duas frases curtas, sem markdown, para o Jarvis falar em voz alta", '

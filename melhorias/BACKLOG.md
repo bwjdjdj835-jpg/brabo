@@ -8,8 +8,6 @@ Regra: tudo que publica, instala, clica na tela ou apaga pede confirmação ("Co
 ## A fazer
 - [ ] Código A/1070809.7080: publicar na Vercel (com confirmação), gravar prévias de campanha automotiva e preparar
   os vídeos para postagem (postar sempre com confirmação). Hoje o código só abre a Vercel na mini tela.
-- [ ] Código C/01070910111213141516: renomear o assistente para "Braga"? (perguntar ao usuário: nome falado,
-  palavra de chamada e título da janela)
 - [ ] 3. Voz mais Jarvis: efeito de rádio/metálico leve, escolher voz, interromper a fala ("para")
 - [ ] 6. Publicar o último site/web app na Vercel (com confirmação; precisa `npx vercel login` uma vez)
 - [ ] 7. Instalar programas pelo winget ("instala o VLC"), com confirmação
@@ -17,6 +15,12 @@ Regra: tudo que publica, instala, clica na tela ou apaga pede confirmação ("Co
 - [ ] 9. Ideias da pesquisa "como fazer um Jarvis" (lembretes, timer, clima, rotina...)
 
 ## Feito
+- [x] Assistente renomeado para Braga (identidade.py): nome falado, título B.R.A.G.A., chamada "Braga" (e "Jarvis"
+  continua valendo), ícone B, atalhos "Braga" e "Braga - Envios". Código e pastas continuam "Jarvis".
+- [x] Mini tela flutuante (interface/pip.html): janelinha 440x300 sempre por cima, arrastável, clicável;
+  "abre a mini tela flutuante" / botão. 
+- [x] WhatsApp (whatsapp.py): "conecta o whatsapp" (QR uma vez), "manda a mensagem [e o vídeo] pro <nome|contato N|
+  próximo>" -> um contato por vez, confirmação, limite 20/dia, marca "enviado" no contatos.csv. Busca exata pelo nome.
 - [x] Fábrica de sites, código B/07070707 (fabrica_sites.py): negócios sem site no Maps -> print -> fotos do
   negócio (galeria do Maps) -> domínio livre (RDAP) -> modelo de design -> site completo feito pelo Claude Code
   com checagem automática em loop (até 3 voltas; sem Claude, IA de reserva; sem nenhuma, modelo pronto) -> print
