@@ -510,6 +510,19 @@ def executar(comando, mini_tela=False, url_mini=""):
             and not tem("app", "aplicativo", "site", "projeto", "apk", "email", "pagina", "jogo")):
         return {"acao": "erros"}
 
+    # ----- fábrica de sites (código B/07070707): negócios sem site -> site pronto -> publicar com confirmação -----
+    if re.match(r"^(?:publica\w*|sobe|subir|hospeda\w*)\s+(?:os\s+|as\s+)?(?:sites?|previas?)\b.*\b(?:github|ar)\b", t):
+        return {"acao": "fabrica_publicar"}
+    fabrica = re.match(r"^(?:(?:faz\w*|faca|inici\w*|roda)\s+(?:a\s+|uma\s+)?)?fabrica\s+de\s+sites?\s+(?:de\s+|para\s+|pra\s+|com\s+)?(.+)"
+                       r"|^(?:cria\w*|faz\w*|monta\w*)\s+sites?\s+(?:para|pra)\s+(?:os\s+)?(?:negocios|comercios|empresas|lojas)"
+                       r"\s+sem\s+site\s+(?:de\s+|em\s+)?(.+)", t)
+    if fabrica:
+        alvo = fabrica.group(1) or fabrica.group(2)
+        quantos = re.search(r"\b(\d{1,2})\s+(?:comercios?|negocios?|empresas?|lojas?|sites?)\b", alvo)
+        alvo = re.sub(r"\b\d{1,2}\s+(?:comercios?|negocios?|empresas?|lojas?|sites?)\s*(?:de\s+)?", "", alvo).strip()
+        return {"acao": "fabrica_sites", "busca": _com_acentos(alvo, t, original),
+                "quantidade": int(quantos.group(1)) if quantos else 3}
+
     # ----- mini tela: navegador do Jarvis dentro da interface (antes do modo tela: "na tela do jarvis") -----
     mini = _mini_tela(t, original, mini_tela, url_mini)
     if mini is not None:

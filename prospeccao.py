@@ -291,7 +291,8 @@ def _quem_sou():
     """Nome/marca do usuário em biblioteca/meus_dados.md, se ele preencheu."""
     try:
         with open(MEUS_DADOS, encoding="utf-8") as arquivo:
-            achado = re.search(r"Nome da empresa / marca:\s*(.+)", arquivo.read())
+            # [ \t]* e não \s*: com o campo vazio, \s* pulava a linha e pegava o campo de baixo
+            achado = re.search(r"Nome da empresa / marca:[ \t]*([^\n]*)", arquivo.read())
         return achado.group(1).strip() if achado and achado.group(1).strip() else ""
     except OSError:
         return ""

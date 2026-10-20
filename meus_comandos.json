@@ -203,6 +203,30 @@
         "texto": "Qual ramo e cidade, senhor? Por exemplo: B/107108109110 300-300 barbearias em Cacoal. Para mais comércios, diga: 10 comércios de barbearias em Cacoal. As mensagens ficam prontas, e o envio é do senhor."
       },
       "descricao": "Explica como usar o código de prospecção completa."
+    },
+    {
+      "nome": "B/07070707 · fábrica de sites",
+      "frases": [
+        "b/07070707 {busca}"
+      ],
+      "acao": {
+        "tipo": "comandos",
+        "lista": [
+          "fábrica de sites de {busca}"
+        ]
+      },
+      "descricao": "Acha negócios sem site no Google Maps, tira o print, confere o domínio, escolhe o modelo, cria o site, o zip e o vídeo, escreve a mensagem e pergunta se pode publicar no GitHub."
+    },
+    {
+      "nome": "B/07070707 · ajuda",
+      "frases": [
+        "b/07070707"
+      ],
+      "acao": {
+        "tipo": "responder",
+        "texto": "Qual ramo e cidade, senhor? Por exemplo: B/07070707 barbearias em Cacoal. Faço até 8 sites por vez; o padrão é 3."
+      },
+      "descricao": "Explica como usar o código da fábrica de sites."
     }
   ]
 }

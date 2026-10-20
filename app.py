@@ -320,6 +320,84 @@ class Jarvis:
         return (f"Começando a prospecção de {busca}, senhor: até {quantidade} comércios. Vou mostrando na mini tela; "
                 "leva alguns minutos.")
 
+    def _fabrica_sites(self, busca, quantidade=3):
+        """Código B/07070707: negócios sem site no Maps -> print -> domínio -> modelo -> site -> zip -> vídeo ->
+        mensagem. No fim pergunta se pode publicar no GitHub Pages (público: só com o "sim" do senhor)."""
+        if not busca:
+            return "Qual ramo e cidade, senhor? Por exemplo: fábrica de sites de barbearias em Cacoal."
+        if getattr(self, "_fabricando", False):
+            return "Ainda estou fazendo os sites anteriores, senhor. Aviso quando terminar."
+        self._fabricando = True
+
+        def trabalho():
+            import fabrica_sites
+            import navegador
+            self._ui("tarefa", "Fábrica de sites", busca)
+            pasta = None
+            try:
+                navegador.preparar()
+                self._aba_ativa = "navegador"
+                self._ui("abrirNavegador")
+                r = fabrica_sites.executar(busca, quantidade, lambda t: self._ui("atividade", t))
+                pasta = r["pasta"]
+                self._ui("nota", r["entregas"])
+                try:
+                    os.startfile(r["entregas"])
+                except OSError:
+                    log.warning("Não consegui abrir %s", r["entregas"], exc_info=True)
+                videos = sum(1 for i in r["itens"] if i.get("video"))
+                livres = sum(1 for i in r["itens"] if any(d["situacao"] == "livre" for d in i["dominios"]))
+                fala = (f"Pronto, senhor. Achei {len(r['itens'])} negócios sem site e fiz um site para cada um, com print, "
+                        f"zip e {videos} vídeos em MP4 na pasta Vídeos, Jarvis, Sites. {livres} têm domínio livre. "
+                        "Abri a página de entregas com as mensagens.")
+            except Exception as erro:
+                log.exception("Falha na fábrica de sites: %s", busca)
+                fala = f"Não consegui terminar os sites, senhor. {str(erro)[:150]}"
+            finally:
+                self._fabricando = False
+            self._ui("tarefa", None, None)
+            with self._trava:
+                if pasta:
+                    fala += " " + self._preparar_publicacao(pasta)
+                self._falar(fala)
+                self._estado_parado()
+
+        threading.Thread(target=trabalho, daemon=True).start()
+        return (f"Começando a fábrica de sites de {busca}, senhor: até {quantidade} negócios sem site. "
+                "Vou mostrando na mini tela; leva alguns minutos.")
+
+    def _preparar_publicacao(self, pasta):
+        """Publicar deixa os sites públicos na internet: só com confirmação. Sem GitHub pronto, explica o que falta."""
+        import github_pages
+        pronto, motivo = github_pages.situacao()
+        if not pronto:
+            return f"Para publicar no GitHub: {motivo}"
+
+        def publicar():
+            def trabalho():
+                import fabrica_sites
+                self._ui("tarefa", "Publicando no GitHub Pages", os.path.basename(pasta))
+                try:
+                    n, execucao = fabrica_sites.publicar(pasta, lambda t: self._ui("atividade", t))
+                    fala = (f"Publiquei {n} sites no GitHub Pages, senhor. Os links já estão nas mensagens; o GitHub "
+                            "leva uns minutos para deixar no ar.")
+                    try:
+                        os.startfile(execucao["entregas"])
+                    except OSError:
+                        pass
+                except Exception as erro:
+                    log.exception("Falha ao publicar no GitHub")
+                    fala = f"Não consegui publicar, senhor. {str(erro)[:150]}"
+                self._ui("tarefa", None, None)
+                with self._trava:
+                    self._falar(fala)
+                    self._estado_parado()
+            threading.Thread(target=trabalho, daemon=True).start()
+            return "Publicando, senhor. Aviso quando estiver no ar."
+
+        self._pendente = publicar
+        return "Quer que eu publique os sites no GitHub Pages? Eles ficam públicos na internet. Confirma?"
+
     def _modo_navegador(self, tarefa):
         """O Jarvis age sozinho dentro da mini tela (clica, digita, rola), mostrando tudo ao vivo."""
         if claude_code.ocupado():
@@ -684,6 +762,14 @@ class Jarvis:
             return self._abrir_mini_tela(pedido["alvo"], pedido.get("buscador", "bing"))
         if acao == "prospeccao":
             return self._prospeccao(pedido["busca"], pedido.get("quantidade", 5))
+        if acao == "fabrica_sites":
+            return self._fabrica_sites(pedido["busca"], pedido.get("quantidade", 3))
+        if acao == "fabrica_publicar":
+            import fabrica_sites
+            pasta = fabrica_sites.ultima_execucao()
+            if not pasta:
+                return "Ainda não fiz nenhum site, senhor. Diga: fábrica de sites de barbearias em Cacoal."
+            return self._preparar_publicacao(pasta)
         if acao == "navegador_controle":
             nomes = {"voltar": "Voltando.", "avancar": "Avançando.", "recarregar": "Recarregando a página.",
                      "rolar": "Descendo." if (pedido.get("valor") or 0) > 0 else "Subindo."}
