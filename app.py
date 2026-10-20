@@ -440,6 +440,7 @@ class Jarvis:
     # ---------- mini notebook: a tela real do notebook ao vivo, com mouse e teclado de verdade ----------
     def notebook_info(self):
         import notebook
+        notebook.controle.ao_tirar_da_frente = self.abrir_notebook_flutuante
         return {"quadro": f"/tela/{servidor.TOKEN}/quadro.jpg", **notebook.info(), **notebook.sessao.estado()}
 
     def notebook_estado(self):

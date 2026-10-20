@@ -6,8 +6,10 @@
 - Sessao:       pausar/retomar/parar, correções do senhor no meio da tarefa e o registro das ações.
 - AlvoNotebook: o que o agente_tela precisa (capturar, clicar, digitar...) para o Braga agir sozinho aqui.
 
-Quando um clique cai em cima da janela principal do Braga, ela é minimizada antes, para o clique chegar ao
-programa de verdade (o senhor acompanha pelo notebook flutuante, no canto).
+Enquanto alguém olha o notebook, as janelas do Braga ficam fora da captura (SetWindowDisplayAffinity, só nas
+janelas do próprio Braga): a mini tela mostra o que está atrás delas, sem um Braga dentro do outro. Ao fechar o
+notebook, tudo volta ao normal. Quando um clique cai em cima da janela principal do Braga, ela é minimizada
+antes, para o clique chegar ao programa de verdade, e o notebook flutuante abre no canto.
 
 Freio de segurança (pyautogui.FAILSAFE): ligado por padrão; jogar o mouse no canto superior esquerdo para tudo.
 Dá para desligar no botão "freio" do notebook.
@@ -58,6 +60,35 @@ def _retangulo(hwnd):
     return r.left, r.top, r.right, r.bottom
 
 
+WDA_NENHUM, WDA_FORA_DA_CAPTURA = 0x0, 0x11
+
+
+def fora_da_captura(sim=True):
+    """Enquanto o mini notebook está aberto, as janelas do Braga não entram nas fotos da tela (o mesmo recurso que
+    os programas de reunião usam). Sem isso o notebook filma a si mesmo, um Braga dentro do outro, sem fim.
+    Devolve as janelas em que o Windows recusou: essas são cobertas na imagem."""
+    recusadas = []
+    for hwnd in janelas_do_braga().values():
+        if not user32.SetWindowDisplayAffinity(hwnd, WDA_FORA_DA_CAPTURA if sim else WDA_NENHUM) and sim:
+            recusadas.append(hwnd)
+    return recusadas
+
+
+def _cobrir(imagem, monitor, janelas):
+    """Plano B: pinta por cima das janelas do Braga que o Windows não deixou tirar da captura."""
+    if not janelas:
+        return
+    escala = imagem.width / monitor["width"]
+    desenho = ImageDraw.Draw(imagem)
+    for hwnd in janelas:
+        if not user32.IsWindowVisible(hwnd) or user32.IsIconic(hwnd):
+            continue
+        esquerda, topo, direita, baixo = ((v - o) * escala for v, o in zip(
+            _retangulo(hwnd), (monitor["left"], monitor["top"], monitor["left"], monitor["top"])))
+        desenho.rectangle((esquerda, topo, direita, baixo), fill=(5, 11, 22), outline=(61, 139, 255), width=2)
+        desenho.text(((esquerda + direita) / 2 - 40, (topo + baixo) / 2), "janela do Braga", fill=(96, 165, 250))
+
+
 # ---------- captura ----------
 class CapturaTela:
     LARGURA = 1280        # largura do quadro mandado para a interface
@@ -71,6 +102,7 @@ class CapturaTela:
         self._numero_jpg = -1
         self._pedido = 0.0
         self._linha = None
+        self._cobrir = []    # janelas do Braga que o Windows não tirou da captura
         self.numero = 0
         self.monitor = None  # {"left", "top", "width", "height"} da tela principal
 
@@ -88,6 +120,7 @@ class CapturaTela:
         imagem = Image.frombytes("RGB", bruta.size, bruta.bgra, "raw", "BGRX")
         if largura and imagem.width > largura:
             imagem = imagem.resize((largura, round(imagem.height * largura / imagem.width)), Image.BILINEAR)
+        _cobrir(imagem, self.monitor, self._cobrir)
         if com_mouse:
             ponto = wintypes.POINT()
             user32.GetCursorPos(ctypes.byref(ponto))
@@ -101,12 +134,19 @@ class CapturaTela:
 
     def _capturar_sem_parar(self):
         """Linha própria só para fotografar (a parte lenta, ~70 ms neste PC); a conversão fica com quem pede."""
-        with _mss() as sct:
-            while time.time() - self._pedido < self.OCIOSO:
-                self.monitor = dict(sct.monitors[1])
-                self._bruta = sct.grab(self.monitor)
-                self._numero_bruta += 1
-        self._linha = None
+        ajuste = 0.0
+        try:
+            with _mss() as sct:
+                while time.time() - self._pedido < self.OCIOSO:
+                    if time.time() - ajuste > 1:  # janelas novas do Braga (o flutuante) também saem da captura
+                        self._cobrir, ajuste = fora_da_captura(True), time.time()
+                    self.monitor = dict(sct.monitors[1])
+                    self._bruta = sct.grab(self.monitor)
+                    self._numero_bruta += 1
+        finally:
+            fora_da_captura(False)  # notebook fechado: o Braga volta a aparecer nos prints normais
+            self._cobrir = []
+            self._linha = None
 
     def quadro(self):
         """JPEG mais recente, para a mini tela (~13 por segundo neste PC). None enquanto liga."""
@@ -125,6 +165,7 @@ class CapturaTela:
             imagem = Image.frombuffer("RGBX", bruta.size, bruta.bgra, "raw", "BGRX", 0, 1)
             imagem = imagem.resize((self.LARGURA, round(bruta.size[1] * self.LARGURA / bruta.size[0])),
                                    Image.NEAREST).convert("RGB")
+            _cobrir(imagem, self.monitor, self._cobrir)
             ponto = wintypes.POINT()
             user32.GetCursorPos(ctypes.byref(ponto))
             escala = imagem.width / self.monitor["width"]
@@ -147,6 +188,7 @@ class ControleReal:
     def __init__(self, captura):
         self.captura = captura
         self.ultimo_ponto = None  # onde foi o último clique (para devolver o foco antes de digitar)
+        self.ao_tirar_da_frente = None  # o app abre o notebook flutuante quando a janela grande sai da frente
 
     def preparar(self):
         tela.preparar()  # DPI: pixels da foto = pixels do clique
@@ -174,6 +216,8 @@ class ControleReal:
             esquerda, topo, direita, baixo = _retangulo(hwnd)
             if esquerda <= x < direita and topo <= y < baixo:
                 user32.ShowWindow(hwnd, 6)  # SW_MINIMIZE: o senhor traz de volta pelo ⤢ do notebook
+                if self.ao_tirar_da_frente:
+                    threading.Thread(target=self.ao_tirar_da_frente, daemon=True).start()
                 time.sleep(0.35)
 
     def clicar(self, fx, fy, botao="left", duplo=False):
