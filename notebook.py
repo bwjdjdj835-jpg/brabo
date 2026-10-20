@@ -6,10 +6,11 @@
 - Sessao:       pausar/retomar/parar, correções do senhor no meio da tarefa e o registro das ações.
 - AlvoNotebook: o que o agente_tela precisa (capturar, clicar, digitar...) para o Braga agir sozinho aqui.
 
-Enquanto alguém olha o notebook, as janelas do Braga ficam fora da captura (SetWindowDisplayAffinity, só nas
-janelas do próprio Braga): a mini tela mostra o que está atrás delas, sem um Braga dentro do outro. Ao fechar o
-notebook, tudo volta ao normal. Quando um clique cai em cima da janela principal do Braga, ela é minimizada
-antes, para o clique chegar ao programa de verdade, e o notebook flutuante abre no canto.
+Primeira pessoa: enquanto alguém olha o notebook, a janela do Braga fica por cima de tudo e fora da captura
+(SetWindowDisplayAffinity, só nas janelas do próprio Braga). Os programas de verdade ficam ATRÁS do Braga e a
+mini tela mostra esses programas: tudo acontece dentro do Braga, sem um Braga dentro do outro e sem janela
+pulando na frente. Os cliques atravessam a janela do Braga só durante o clique (WS_EX_TRANSPARENT) e chegam ao
+programa de trás. Ao fechar o notebook, tudo volta ao normal.
 
 Freio de segurança (pyautogui.FAILSAFE): ligado por padrão; jogar o mouse no canto superior esquerdo para tudo.
 Dá para desligar no botão "freio" do notebook.
@@ -37,6 +38,14 @@ user32.WindowFromPoint.argtypes = [wintypes.POINT]
 user32.WindowFromPoint.restype = wintypes.HWND
 user32.GetAncestor.restype = wintypes.HWND
 user32.FindWindowW.restype = wintypes.HWND
+user32.GetForegroundWindow.restype = wintypes.HWND
+user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                wintypes.UINT]
+user32.SetLayeredWindowAttributes.argtypes = [wintypes.HWND, wintypes.DWORD, ctypes.c_ubyte, wintypes.DWORD]
+
+GWL_EXSTYLE, WS_EX_LAYERED, WS_EX_TRANSPARENT, LWA_ALPHA = -20, 0x80000, 0x20, 0x2
+HWND_TOPMOST, HWND_NOTOPMOST = wintypes.HWND(-1), wintypes.HWND(-2)
+SWP_SEM_MEXER = 0x0001 | 0x0002 | 0x0010  # SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE
 
 
 def _mss():
@@ -72,6 +81,49 @@ def fora_da_captura(sim=True):
         if not user32.SetWindowDisplayAffinity(hwnd, WDA_FORA_DA_CAPTURA if sim else WDA_NENHUM) and sim:
             recusadas.append(hwnd)
     return recusadas
+
+
+def _principal_visivel():
+    hwnd = janelas_do_braga().get("principal")
+    return hwnd if hwnd and user32.IsWindowVisible(hwnd) and not user32.IsIconic(hwnd) else None
+
+
+def primeira_pessoa(sim=True):
+    """O notebook "dentro" do Braga: a janela principal fica por cima de tudo (sem roubar o foco) e todas as do
+    Braga saem da captura. Os programas abrem e funcionam atrás dele. Devolve as janelas a cobrir na imagem."""
+    recusadas = fora_da_captura(sim)
+    hwnd = janelas_do_braga().get("principal")
+    if hwnd:
+        user32.SetWindowPos(hwnd, HWND_TOPMOST if sim else HWND_NOTOPMOST, 0, 0, 0, 0, SWP_SEM_MEXER)
+    return recusadas
+
+
+class _Atravessar:
+    """Durante um clique ou rolagem, a janela do Braga vira "vidro": o mouse passa por ela e chega ao programa de
+    trás. Depois volta ao normal e continua por cima. Guarda a janela que ficou com o foco (para digitar nela)."""
+
+    def __init__(self, controle, x, y):
+        self.controle, self.x, self.y, self.hwnd, self.estilo = controle, x, y, None, 0
+
+    def __enter__(self):
+        hwnd = _principal_visivel()
+        if hwnd:
+            esquerda, topo, direita, baixo = _retangulo(hwnd)
+            if esquerda <= self.x < direita and topo <= self.y < baixo:
+                self.hwnd, self.estilo = hwnd, user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+                user32.SetWindowLongW(hwnd, GWL_EXSTYLE, self.estilo | WS_EX_LAYERED | WS_EX_TRANSPARENT)
+                user32.SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA)  # continua 100% visível
+        return self
+
+    def __exit__(self, *erro):
+        time.sleep(0.12)
+        frente = user32.GetForegroundWindow()
+        if frente and frente not in janelas_do_braga().values():
+            self.controle.alvo_hwnd = frente  # o programa que recebeu o clique
+        if self.hwnd:
+            user32.SetWindowLongW(self.hwnd, GWL_EXSTYLE, self.estilo)
+            user32.SetWindowPos(self.hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_SEM_MEXER)
+        return False
 
 
 def _cobrir(imagem, monitor, janelas):
@@ -139,12 +191,12 @@ class CapturaTela:
             with _mss() as sct:
                 while time.time() - self._pedido < self.OCIOSO:
                     if time.time() - ajuste > 1:  # janelas novas do Braga (o flutuante) também saem da captura
-                        self._cobrir, ajuste = fora_da_captura(True), time.time()
+                        self._cobrir, ajuste = primeira_pessoa(True), time.time()
                     self.monitor = dict(sct.monitors[1])
                     self._bruta = sct.grab(self.monitor)
                     self._numero_bruta += 1
         finally:
-            fora_da_captura(False)  # notebook fechado: o Braga volta a aparecer nos prints normais
+            primeira_pessoa(False)  # notebook fechado: o Braga volta a ser janela normal e a aparecer nos prints
             self._cobrir = []
             self._linha = None
 
@@ -187,8 +239,8 @@ class ControleReal:
 
     def __init__(self, captura):
         self.captura = captura
-        self.ultimo_ponto = None  # onde foi o último clique (para devolver o foco antes de digitar)
-        self.ao_tirar_da_frente = None  # o app abre o notebook flutuante quando a janela grande sai da frente
+        self.ultimo_ponto = None  # onde foi o último clique
+        self.alvo_hwnd = None     # programa que recebeu o último clique (o teclado vai para ele)
 
     def preparar(self):
         tela.preparar()  # DPI: pixels da foto = pixels do clique
@@ -209,28 +261,16 @@ class ControleReal:
         fx, fy = min(max(float(fx), 0.0), 1.0), min(max(float(fy), 0.0), 1.0)
         return round(m["left"] + fx * (m["width"] - 1)), round(m["top"] + fy * (m["height"] - 1))
 
-    def _liberar(self, x, y):
-        """Se o ponto cai na janela principal do Braga, ela sai da frente (minimiza) antes do clique."""
-        hwnd = janelas_do_braga().get("principal")
-        if hwnd and user32.IsWindowVisible(hwnd) and not user32.IsIconic(hwnd):
-            esquerda, topo, direita, baixo = _retangulo(hwnd)
-            if esquerda <= x < direita and topo <= y < baixo:
-                user32.ShowWindow(hwnd, 6)  # SW_MINIMIZE: o senhor traz de volta pelo ⤢ do notebook
-                if self.ao_tirar_da_frente:
-                    threading.Thread(target=self.ao_tirar_da_frente, daemon=True).start()
-                time.sleep(0.35)
-
     def clicar(self, fx, fy, botao="left", duplo=False):
         import pyautogui
         self.preparar()
         x, y = self.real(fx, fy)
-        self._liberar(x, y)
-        pyautogui.moveTo(x, y, duration=0.15)
-        if duplo:
-            pyautogui.doubleClick(x, y)
-        else:
-            pyautogui.click(x, y, button=botao)
-        time.sleep(0.15)
+        with _Atravessar(self, x, y):  # o clique passa pelo Braga e chega ao programa de trás
+            pyautogui.moveTo(x, y, duration=0.15)
+            if duplo:
+                pyautogui.doubleClick(x, y)
+            else:
+                pyautogui.click(x, y, button=botao)
         self.ultimo_ponto = (x, y)
 
     def mover(self, fx, fy):
@@ -241,15 +281,16 @@ class ControleReal:
     def rolar(self, cliques):
         import pyautogui
         self.preparar()
-        pyautogui.scroll(int(cliques))
+        x, y = self.ultimo_ponto or pyautogui.position()
+        with _Atravessar(self, x, y):  # a rodinha também vai para o programa de trás, não para o Braga
+            pyautogui.moveTo(x, y)
+            pyautogui.scroll(int(cliques))
 
     def focar_alvo(self):
-        """Antes de digitar pelo painel: devolve o foco à janela do último clique (o Braga estava na frente)."""
-        if not self.ultimo_ponto:
-            return
-        hwnd = user32.GetAncestor(user32.WindowFromPoint(wintypes.POINT(*self.ultimo_ponto)), 2)  # GA_ROOT
-        if hwnd and hwnd not in janelas_do_braga().values():
-            user32.SetForegroundWindow(hwnd)
+        """Antes de digitar pelo painel do Braga: o teclado volta para o programa do último clique (ele continua
+        atrás do Braga na tela, mas é quem recebe as teclas)."""
+        if self.alvo_hwnd and user32.IsWindow(self.alvo_hwnd):
+            user32.SetForegroundWindow(self.alvo_hwnd)
             time.sleep(0.2)
 
     def digitar(self, texto):
@@ -340,6 +381,7 @@ class AlvoNotebook:
         self.controle.preparar()
 
     def capturar(self):
+        self.captura.quadro()  # mantém a primeira pessoa ligada (Braga por cima e fora da foto) durante a tarefa
         imagem = self.captura.foto(tela.LARGURA_MODELO, com_mouse=False)
         imagem.save(tela.CAPTURA)
         self._largura, self._altura = imagem.width, imagem.height

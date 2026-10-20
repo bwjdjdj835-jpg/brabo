@@ -440,7 +440,6 @@ class Jarvis:
     # ---------- mini notebook: a tela real do notebook ao vivo, com mouse e teclado de verdade ----------
     def notebook_info(self):
         import notebook
-        notebook.controle.ao_tirar_da_frente = self.abrir_notebook_flutuante
         return {"quadro": f"/tela/{servidor.TOKEN}/quadro.jpg", **notebook.info(), **notebook.sessao.estado()}
 
     def notebook_estado(self):
@@ -1679,13 +1678,9 @@ class Jarvis:
             import pyautogui
             notebook.sessao.comecar(tarefa)
             self._ui("tarefa", "Controlando o notebook", tarefa)
-            self.abrir_notebook_flutuante()
-            time.sleep(0.8)
-            try:
-                self._janela.minimize()  # a janela grande sairia na foto e na frente dos cliques
-            except Exception:
-                log.debug("Não consegui minimizar a janela principal", exc_info=True)
-            time.sleep(0.5)
+            self.mostrar_principal()
+            self._ui("abrirNotebook")  # tudo acontece dentro do Braga: os programas ficam atrás dele
+            time.sleep(1.5)
             try:
                 deu_certo, resumo = agente_tela.executar_tarefa(
                     tarefa, lambda fala: self._ui("atividade", fala), alvo=notebook.alvo)
@@ -1701,8 +1696,8 @@ class Jarvis:
                 self._estado_parado()
 
         threading.Thread(target=trabalho, daemon=True).start()
-        return ("Entendido, senhor. Vou fazer isso no notebook. Acompanhe no notebook flutuante: "
-                "lá dá para pausar, parar ou corrigir. Freio: mouse no canto superior esquerdo.")
+        return ("Entendido, senhor. Vou fazer isso no mini notebook. Dá para pausar, parar ou corrigir por lá. "
+                "Freio: mouse no canto superior esquerdo.")
 
     def _modo_fundo(self, ligar):
         import fundo
