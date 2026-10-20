@@ -227,6 +227,31 @@
         "texto": "Qual ramo e cidade, senhor? Por exemplo: B/07070707 barbearias em Cacoal. Faço até 8 sites por vez; o padrão é 3."
       },
       "descricao": "Explica como usar o código da fábrica de sites."
+    },
+    {
+      "nome": "/700 · venda completa",
+      "frases": [
+        "/700 {nicho}",
+        "barra 700 {nicho}"
+      ],
+      "acao": {
+        "tipo": "comandos",
+        "lista": [
+          "venda completa de {nicho}"
+        ]
+      },
+      "descricao": "Acha comércios sem site em Cacoal, faz o site, o zip e o vídeo de cada um com o preço de 100 reais na mensagem, abre o login do GitHub na mini tela, publica com o seu sim e deixa o WhatsApp pronto. As mensagens vão uma por vez, com o seu sim, e eu aviso quando um cliente responder."
+    },
+    {
+      "nome": "/700 · ajuda",
+      "frases": [
+        "/700"
+      ],
+      "acao": {
+        "tipo": "responder",
+        "texto": "Qual ramo, senhor? Por exemplo: /700 pet shop. A cidade padrão é Cacoal; para outra, diga: /700 pet shop em Ji-Paraná."
+      },
+      "descricao": "Explica como usar o código /700."
     }
   ]
 }
