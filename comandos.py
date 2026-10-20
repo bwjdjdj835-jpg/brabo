@@ -538,6 +538,11 @@ def executar(comando, mini_tela=False, url_mini=""):
             and not tem(r"baix\w*", r"resum\w*", r"relatori\w*", "toca", "youtube")):
         return {"acao": "abrir_videos"}
 
+    # ----- código /700: fábrica de sites + preço de R$ 100 + GitHub + WhatsApp (envio um por vez, com o "sim") -----
+    venda = re.match(r"^(?:/|barra\s+)?700\s+(.+)|^venda\s+completa\s+(?:de\s+|para\s+|pra\s+)?(.+)", t)
+    if venda:
+        return {"acao": "venda_700", "nicho": _com_acentos(venda.group(1) or venda.group(2), t, original)}
+
     # ----- fábrica de sites (código B/07070707): negócios sem site -> site pronto -> publicar com confirmação -----
     if re.match(r"^(?:publica\w*|sobe|subir|hospeda\w*)\s+(?:os\s+|as\s+)?(?:sites?|previas?)\b.*\b(?:github|ar)\b", t):
         return {"acao": "fabrica_publicar"}

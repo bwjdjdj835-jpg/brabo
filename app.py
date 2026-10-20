@@ -446,9 +446,11 @@ class Jarvis:
         _mostrar_arquivo(pasta)
         return atalho
 
-    def _fabrica_sites(self, busca, quantidade=3):
+    def _fabrica_sites(self, busca, quantidade=3, preco=None, completo=False):
         """Código B/07070707: negócios sem site no Maps -> print -> domínio -> modelo -> site -> zip -> vídeo ->
-        mensagem. No fim pergunta se pode publicar no GitHub Pages (público: só com o "sim" do senhor)."""
+        mensagem. No fim pergunta se pode publicar no GitHub Pages (público: só com o "sim" do senhor).
+        completo (código /700): o preço entra na mensagem e, depois dos sites, vem o login do GitHub na mini tela,
+        a publicação (com o "sim") e o WhatsApp pronto (envio um por vez, com o "sim")."""
         if not busca:
             return "Qual ramo e cidade, senhor? Por exemplo: fábrica de sites de barbearias em Cacoal."
         if getattr(self, "_fabricando", False):
@@ -464,7 +466,7 @@ class Jarvis:
                 navegador.preparar()
                 self._aba_ativa = "navegador"
                 self._ui("abrirNavegador")
-                r = fabrica_sites.executar(busca, quantidade, lambda t: self._ui("atividade", t))
+                r = fabrica_sites.executar(busca, quantidade, lambda t: self._ui("atividade", t), preco=preco)
                 pasta = r["pasta"]
                 atalho = self._entregar_pasta(r["pasta_envio"])
                 videos = sum(1 for i in r["itens"] if i.get("video"))
@@ -480,14 +482,134 @@ class Jarvis:
                 self._fabricando = False
             self._ui("tarefa", None, None)
             with self._trava:
-                if pasta:
+                if pasta and not completo:
                     fala += " " + self._preparar_publicacao(pasta)
                 self._falar(fala)
                 self._estado_parado()
+            if pasta and completo:
+                self._etapa_github(pasta)
 
+        if completo:
+            self._github_oferecido = True  # o /700 pergunta do jeito dele; o vigia não pergunta de novo
         threading.Thread(target=trabalho, daemon=True).start()
         return (f"Começando a fábrica de sites de {busca}, senhor: até {quantidade} negócios sem site. "
                 "Vou mostrando na mini tela; leva alguns minutos.")
+
+    def _venda_700(self, nicho):
+        """Código /700: comércios de Cacoal sem site -> site, zip e vídeo de cada um, com o preço de R$ 100 na
+        mensagem -> login do GitHub na mini tela -> publicar (com o "sim") -> WhatsApp pronto. As mensagens vão
+        uma por vez, quando o senhor pede; quando um cliente responde, o Braga avisa para o senhor assumir."""
+        nicho = nicho.strip(" .")
+        if not nicho:
+            return "Qual ramo, senhor? Por exemplo: barra 700 pet shop."
+        busca = nicho if " em " in f" {nicho.lower()} " else f"{nicho} em Cacoal"  # a cidade padrão é Cacoal
+        return self._fabrica_sites(busca, 3, preco=100, completo=True)
+
+    def _etapa_github(self, pasta):
+        """/700, depois dos sites: entra no GitHub pela mini tela se precisar, pergunta se publica e segue."""
+        import subprocess
+        import github_pages
+        import navegador
+
+        def falar(texto):
+            with self._trava:
+                self._falar(texto)
+                self._estado_parado()
+
+        pronto, motivo = github_pages.situacao()
+        if not pronto:
+            try:
+                processo, codigo = github_pages.login_pelo_navegador()
+                navegador.abrir("https://github.com/login/device")
+            except Exception as erro:
+                log.exception("/700: login do GitHub não começou")
+                falar(f"Não consegui começar o login do GitHub, senhor. {motivo} {str(erro)[:100]}")
+                return
+            self._aba_ativa = "navegador"
+            self._ui("abrirNavegador")
+            self._ui("nota", f"Código do GitHub: {codigo}  (já está copiado: é só colar com Ctrl+V)")
+            falar("Agora o GitHub, senhor. Abri a página de login na mini tela. Entre na sua conta, cole o código, "
+                  f"que já copiei, {' '.join(codigo)}, clique em Continue e depois em Authorize. Eu espero.")
+            try:
+                processo.wait(timeout=900)
+            except subprocess.TimeoutExpired:
+                processo.kill()
+                falar("O GitHub não foi autorizado em 15 minutos, senhor. Quando quiser, diga: publica os sites no "
+                      "GitHub.")
+                return
+            if not github_pages.situacao()[0]:
+                falar("O login do GitHub não terminou, senhor. Quando quiser, diga: publica os sites no GitHub.")
+                return
+
+        def publicar_e_seguir():
+            def trabalho():
+                import fabrica_sites
+                self._ui("tarefa", "Publicando no GitHub Pages", os.path.basename(pasta))
+                try:
+                    n, execucao = fabrica_sites.publicar(pasta, lambda t: self._ui("atividade", t))
+                    self._entregar_pasta(execucao["pasta_envio"])  # contatos refeitos, agora com o link do site
+                    fala = f"Publiquei {n} sites no GitHub Pages, senhor. O GitHub leva uns minutos para deixar no ar."
+                except Exception as erro:
+                    log.exception("/700: falha ao publicar")
+                    execucao, fala = None, f"Não consegui publicar, senhor. {str(erro)[:150]}"
+                self._ui("tarefa", None, None)
+                falar(fala)
+                if execucao:
+                    self._etapa_whatsapp(execucao["pasta_envio"])
+            threading.Thread(target=trabalho, daemon=True).start()
+            return "Publicando, senhor. Depois abro o WhatsApp."
+
+        with self._trava:
+            self._pendente = publicar_e_seguir
+            self._falar("O GitHub está pronto, senhor. Publico os sites agora? Eles ficam públicos na internet. "
+                        "Confirma?")
+            self._estado_parado()
+
+    def _etapa_whatsapp(self, pasta_envio):
+        """/700, último passo: WhatsApp Web na mini tela e as mensagens prontas. Enviar é um por vez, com o "sim"."""
+        import whatsapp
+        try:
+            com_celular = sum(1 for c in whatsapp.contatos(pasta_envio) if c.get("whatsapp"))
+            self._aba_ativa = "navegador"
+            self._ui("abrirNavegador")
+            estado = whatsapp.situacao()
+            self.abrir_pip()
+        except Exception as erro:
+            log.exception("/700: WhatsApp não abriu")
+            estado, com_celular = f"erro: {str(erro)[:100]}", 0
+        inicio = {"logado": "O WhatsApp está conectado. ",
+                  "qr": "Leia o QR Code da mini tela com o celular: WhatsApp, Aparelhos conectados, Conectar um "
+                        "aparelho. "}.get(estado, "O WhatsApp Web ainda está abrindo na mini tela. ")
+        with self._trava:
+            self._falar(f"{inicio}Tenho {com_celular} cliente{'s' if com_celular != 1 else ''} com celular, senhor, "
+                        "com a mensagem e o preço de 100 "
+                        "reais prontos. Para mandar, diga: manda a mensagem pro próximo. Eu mostro quem é e envio "
+                        "depois do seu sim. Quando algum cliente responder, eu aviso para o senhor assumir a conversa.")
+            self._estado_parado()
+
+    def _vigiar_respostas(self, intervalo=45):
+        """Com o WhatsApp Web aberto na mini tela, avisa quando um cliente que recebeu a mensagem responde.
+        Só lê a lista de conversas: quem responde é o senhor."""
+        import whatsapp
+        avisados = set()
+        while True:
+            time.sleep(intervalo)
+            if self._falando.is_set():
+                continue
+            try:
+                novos = [c for c in whatsapp.quem_respondeu(whatsapp.nao_lidas())
+                         if c.get("whatsapp") not in avisados]
+            except Exception:
+                log.debug("Vigia de respostas: falhou ao olhar o WhatsApp", exc_info=True)
+                continue
+            if not novos:
+                continue
+            avisados.update(c.get("whatsapp") for c in novos)
+            nomes = ", ".join(c["nome"] for c in novos[:3])
+            self._ui("nota", "✆ Respondeu no WhatsApp: " + nomes)
+            with self._trava:
+                self._falar(f"Senhor, {nomes} respondeu no WhatsApp. Assuma a conversa na mini tela.")
+                self._estado_parado()
 
     def _vigiar_github(self, intervalo=120):
         """De tempos em tempos confere se o GitHub ficou pronto (o senhor fez o `gh auth login`). Quando fica e há
@@ -946,6 +1068,8 @@ class Jarvis:
             return self._prospeccao(pedido["busca"], pedido.get("quantidade", 5))
         if acao == "fabrica_sites":
             return self._fabrica_sites(pedido["busca"], pedido.get("quantidade", 3))
+        if acao == "venda_700":
+            return self._venda_700(pedido["nicho"])
         if acao == "fabrica_publicar":
             import fabrica_sites
             pasta = fabrica_sites.ultima_execucao()
@@ -1763,6 +1887,7 @@ def main():
     jarvis._janela = janela
     threading.Thread(target=_vigiar_abertura, args=(jarvis,), daemon=True).start()
     threading.Thread(target=jarvis._vigiar_github, daemon=True).start()
+    threading.Thread(target=jarvis._vigiar_respostas, daemon=True).start()
     webview.start()
 
 

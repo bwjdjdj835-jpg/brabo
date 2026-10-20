@@ -8,6 +8,7 @@ import logging
 import os
 import shutil
 import subprocess
+import time
 
 log = logging.getLogger("jarvis")
 LUGARES_DO_GH = [r"C:\Program Files\GitHub CLI\gh.exe", r"C:\Program Files (x86)\GitHub CLI\gh.exe",
@@ -34,6 +35,45 @@ def situacao():
     if codigo:
         return False, "O GitHub está instalado, mas falta entrar na sua conta: abra o terminal e digite gh auth login."
     return True, "GitHub pronto."
+
+
+def login_pelo_navegador(limite=60):
+    """Começa o `gh auth login --web` escondido e devolve (processo, código de 8 letras). O senhor abre
+    github.com/login/device (o Braga abre na mini tela), digita o código e clica em Authorize; o processo termina
+    sozinho quando o GitHub aprova. A senha fica só com o GitHub: o Braga não vê nada."""
+    gh = _gh()
+    if not gh:
+        raise RuntimeError("o programa do GitHub não está instalado (winget install GitHub.cli)")
+    import re
+    import sys
+    import threading
+    ambiente = dict(os.environ, GH_BROWSER=f'"{sys.executable}" -c pass')  # não abre outro navegador
+    processo = subprocess.Popen([gh, "auth", "login", "--hostname", "github.com", "--git-protocol", "https",
+                                 "--web"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, encoding="utf-8", errors="replace", env=ambiente,
+                                creationflags=subprocess.CREATE_NO_WINDOW)
+    achado = {}
+
+    def ler():
+        for linha in processo.stdout:
+            log.info("gh auth: %s", linha.rstrip())
+            codigo = re.search(r"\b([A-Z0-9]{4}-[A-Z0-9]{4})\b", linha)
+            if codigo and "codigo" not in achado:
+                achado["codigo"] = codigo.group(1)
+                try:
+                    processo.stdin.write("\n")  # o "aperte Enter para abrir o navegador"
+                    processo.stdin.flush()
+                except OSError:
+                    pass
+
+    threading.Thread(target=ler, daemon=True).start()
+    fim = time.time() + limite
+    while "codigo" not in achado and processo.poll() is None and time.time() < fim:
+        time.sleep(0.3)
+    if "codigo" not in achado:
+        processo.kill()
+        raise RuntimeError("o GitHub não mandou o código de login")
+    return processo, achado["codigo"]
 
 
 def usuario():

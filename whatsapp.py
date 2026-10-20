@@ -183,6 +183,41 @@ def enviar(contato, texto, video=None):
     log.info("WhatsApp: enviado para %s%s", contato["nome"], " com vídeo" if video else "")
 
 
+# ---------- respostas: só LÊ a lista de conversas, para avisar o senhor; nunca responde sozinho ----------
+_JS_NAO_LIDAS = r"""() => [...document.querySelectorAll('#pane-side [role="listitem"], #pane-side [role="row"]')]
+  .filter(l => l.querySelector('[aria-label*="não lida" i], [aria-label*="unread" i]'))
+  .map(l => (l.querySelector('span[title]') || {}).title || '').filter(Boolean)"""
+
+
+def nao_lidas():
+    """Nomes (ou números) das conversas com mensagem nova, se o WhatsApp Web estiver aberto na mini tela."""
+    if not navegador.ligado() or WHATSAPP not in (navegador.estado().get("url") or ""):
+        return []
+    return navegador._rodar(lambda: navegador._pagina().evaluate(_JS_NAO_LIDAS), limite=20) or []
+
+
+def quem_respondeu(titulos):
+    """Dos chats com mensagem nova, os contatos que já receberam a nossa mensagem (pelo número ou pelo nome)."""
+    raiz = os.path.join(prospeccao.pasta_videos(), "Jarvis")
+    achados = []
+    for arquivo in glob.glob(os.path.join(raiz, "*", "*", "contatos.csv")):
+        try:
+            lista = contatos(os.path.dirname(arquivo))
+        except (OSError, csv.Error):
+            continue
+        for contato in lista:
+            if not contato.get("enviado"):
+                continue
+            numero = re.sub(r"\D", "", contato.get("whatsapp") or "")
+            for titulo in titulos:
+                digitos = re.sub(r"\D", "", titulo)
+                if (len(numero) >= 8 and len(digitos) >= 8 and numero[-8:] == digitos[-8:]) \
+                        or _normalizar(titulo) == _normalizar(contato["nome"]):
+                    achados.append(contato)
+                    break
+    return achados
+
+
 def marcar_enviado(pasta, contato, com_video):
     lista = contatos(pasta)
     for c in lista:

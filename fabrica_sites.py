@@ -485,15 +485,16 @@ def empacotar(pasta_negocio, destino_zip):
 
 
 # ---------- 7. mensagem ----------
-def mensagem(item):
+def mensagem(item, preco=None):
     quem = prospeccao._quem_sou()
     apresentacao = f"Aqui é da {quem}. " if quem else ""
     livre = next((d["dominio"] for d in item.get("dominios", []) if d["situacao"] == "livre"), "")
     link = f" Dá para ver aqui: {item['publicado']}" if item.get("publicado") else ""
     dominio = f" O endereço {livre} ainda está livre, se quiserem garantir." if livre else ""
+    valor = f" O site completo, no ar, sai por R$ {preco}." if preco else ""
     return (f"Olá, tudo bem? {apresentacao}Vi que a {item['nome']} ainda não tem site e montei uma prévia, pensada "
-            f"para trazer clientes pelo celular, com botão direto para o WhatsApp de vocês.{link}{dominio} Posso te "
-            f"mandar um vídeo rápido mostrando? Se não tiver interesse, é só avisar que não mando mais nada.")
+            f"para trazer clientes pelo celular, com botão direto para o WhatsApp de vocês.{link}{dominio}{valor} "
+            f"Posso te mandar um vídeo rápido mostrando? Se não tiver interesse, é só avisar que não mando mais nada.")
 
 
 # ---------- página de entregas ----------
@@ -505,7 +506,7 @@ def pagina_de_entregas(execucao):
     e = html.escape
     cartoes = []
     for n, item in enumerate(execucao["itens"], 1):
-        texto = mensagem(item)
+        texto = mensagem(item, execucao.get("preco"))
         zap = prospeccao.whatsapp_de(item.get("telefone"))
         abrir = (f"<a class='zap' href='https://wa.me/{zap}?text={urllib.parse.quote(texto)}'>Abrir no WhatsApp</a>"
                  if zap else "<span class='sem'>sem celular no Maps</span>")
@@ -597,9 +598,10 @@ def ultima_execucao():
 
 
 # ---------- tudo junto ----------
-def executar(busca, quantidade=PADRAO, ao_evento=None, gravar=True, com_claude=True):
+def executar(busca, quantidade=PADRAO, ao_evento=None, gravar=True, com_claude=True, preco=None):
     """Do Google Maps até a página de entregas (sem publicar). Devolve o resumo da execução.
-    com_claude: o site completo é feito pelo Claude (minutos por site); False usa só o modelo pronto (segundos)."""
+    com_claude: o site completo é feito pelo Claude (minutos por site); False usa só o modelo pronto (segundos).
+    preco: valor do site (R$) que entra na mensagem de cada cliente (código /700)."""
     avisar = ao_evento or (lambda t: None)
     quantidade = max(1, min(quantidade, MAXIMO))
     agora = datetime.datetime.now()
@@ -608,7 +610,7 @@ def executar(busca, quantidade=PADRAO, ao_evento=None, gravar=True, com_claude=T
     negocios = buscar_sem_site(busca, quantidade, avisar)
     if not negocios:
         raise ValueError(f"Não achei negócios sem site para '{busca}'. Tente outro ramo ou cidade.")
-    execucao = {"busca": busca, "quando": f"{agora:%d/%m/%Y %H:%M}", "pasta": pasta, "itens": []}
+    execucao = {"busca": busca, "quando": f"{agora:%d/%m/%Y %H:%M}", "pasta": pasta, "itens": [], "preco": preco}
     pasta_videos = os.path.join(VIDEOS, os.path.basename(pasta))
     for n, negocio in enumerate(negocios, 1):
         nome = negocio["nome"]
@@ -687,7 +689,7 @@ def _pacote(execucao):
     execucao["pasta_envio"] = pasta
     pagina = execucao.get("entregas") or os.path.join(execucao["pasta"], "entregas.html")
     return prospeccao.pacote_de_envio(pasta, execucao["busca"], execucao["itens"],
-                                      [mensagem(i) for i in execucao["itens"]], pagina)
+                                      [mensagem(i, execucao.get("preco")) for i in execucao["itens"]], pagina)
 
 
 def publicar(pasta, ao_evento=None):
