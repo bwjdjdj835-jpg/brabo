@@ -129,30 +129,26 @@
              background: rgba(245,158,11,.18); color: var(--alerta); animation: pisca 1.2s infinite; }
   .nb.controlando .nb-selo { display: inline-block; }
   .nb-barra .espaco { flex: 1; }
-  .nb-barra button, .nb-baixo button { height: 30px; min-width: 32px; padding: 0 10px; border-radius: 8px; font-size: 12px;
-                                       border: 1px solid var(--borda-forte); background: rgba(13,24,44,.9); }
-  .nb-barra button:hover, .nb-baixo button:hover { border-color: var(--cor); }
+  .nb-barra button { height: 30px; min-width: 32px; padding: 0 10px; border-radius: 8px; font-size: 12px;
+                     border: 1px solid var(--borda-forte); background: rgba(13,24,44,.9); }
+  .nb-barra button:hover { border-color: var(--cor); }
   /* o notebook 3D (Lenovo, i5 13ª geração): tampa com a tela ao vivo, teclado e touchpad de verdade */
   #paginas > .nb { background: transparent; border: 0; box-shadow: none; overflow: visible; }
   .nb-palco { position: relative; flex: 1; min-height: 0; overflow: hidden; }
-  .nb-palco.ampliado { overflow: auto; scrollbar-color: #2f4f86 transparent; }
-  .nb-palco::-webkit-scrollbar { width: 10px; height: 10px; }
-  .nb-palco::-webkit-scrollbar-thumb { background: #2f4f86; border-radius: 999px; }
-  .nb-palco::-webkit-scrollbar-track, .nb-palco::-webkit-scrollbar-corner { background: transparent; }
   .nb-mundo { position: relative; }
   .laptop { position: absolute; left: 0; top: 4px; width: 1000px; transform-origin: top left; outline: none; }
   .nb-zoom { min-width: 54px; text-align: center; font-size: 12px; color: var(--suave); font-variant-numeric: tabular-nums; }
-  /* com o notebook aberto, ele ganha a janela: menu só com ícones, sem a coluna da direita */
-  body.com-notebook .app { grid-template-columns: 64px minmax(0, 1fr); }
-  body.com-notebook .direita, body.com-notebook .sempre, body.com-notebook .cartao-voz div { display: none; }
-  body.com-notebook .menu { padding: 8px 6px; }
-  body.com-notebook .menu button { font-size: 0; justify-content: center; padding: 0; gap: 0; }
-  body.com-notebook .cartao-voz { justify-content: center; padding: 10px 4px; }
+  /* com o notebook aberto as colunas do lado continuam; só a barra de voz fica mais baixa, para sobrar altura */
   body.com-notebook .voz { padding: 4px 10px; }
   body.com-notebook .voz .redondo { width: 38px; height: 38px; }
   body.com-notebook #onda { height: 34px; }
   body.com-notebook .centro { gap: 8px; }
-  body.com-notebook .nb-log { max-height: 34px; }
+  .nb-barra .nb-pedir { flex: 1; min-width: 120px; height: 30px; padding: 0 10px; border-radius: 8px; outline: none;
+                        background: rgba(5,11,22,.9); border: 1px solid var(--borda-forte); }
+  .nb-barra .nb-pedir:focus { border-color: var(--cor); }
+  .nb-ultima { height: 18px; padding: 0 10px; font-size: 11px; color: var(--suave); white-space: nowrap; overflow: hidden;
+               text-overflow: ellipsis; }
+  .nb-ultima b { color: var(--cor2); font-weight: 600; margin-right: 6px; }
   .tampa { position: relative; width: 1000px; height: 640px; padding: 22px 22px 36px; border-radius: 22px 22px 6px 6px;
            background: linear-gradient(160deg, #34343a, #1d1d21 60%, #26262b); box-shadow: 0 0 0 1px #45454d, 0 30px 60px rgba(0,0,0,.65); }
   .tampa::before { content: ""; position: absolute; top: 8px; left: 50%; width: 7px; height: 7px; margin-left: -3px;
@@ -167,7 +163,7 @@
   .nb.navegador .cursor-virtual { display: block; }
   .dobradica { width: 940px; height: 14px; margin: 0 auto; border-radius: 0 0 10px 10px; background: linear-gradient(#141417, #34343a); }
   .base-3d { position: relative; perspective: 1500px; perspective-origin: 50% -20%; margin-top: -2px; }
-  .base { position: relative; width: 1080px; height: 600px; margin-left: -40px; padding: 28px 74px 0; transform: rotateX(63deg);
+  .base { position: relative; width: 1080px; height: 640px; margin-left: -40px; padding: 28px 74px 0; transform: rotateX(63deg);
           transform-origin: top center; border-radius: 10px 10px 34px 34px;
           background: linear-gradient(180deg, #3d3d44, #2c2c31 55%, #232327); box-shadow: 0 0 0 1px #4a4a52, 0 40px 60px rgba(0,0,0,.6); }
   .teclado { display: flex; flex-direction: column; gap: 7px; padding: 12px; border-radius: 12px; background: #141417;
@@ -201,12 +197,6 @@
   .anel::after { content: ""; position: absolute; inset: 60px 110px; border-radius: 50%; border: 2px solid rgba(96,165,250,.35);
                  box-shadow: 0 0 30px rgba(61,139,255,.35); }
   .laptop.so-tela .base-3d { display: none; }
-  .nb-baixo { display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--borda); flex-wrap: wrap; }
-  .nb-baixo input { flex: 1; min-width: 160px; height: 30px; padding: 0 10px; border-radius: 8px; outline: none;
-                    background: rgba(5,11,22,.9); border: 1px solid var(--borda-forte); }
-  .nb-baixo input:focus { border-color: var(--cor); }
-  .nb-log { list-style: none; max-height: 46px; overflow-y: auto; padding: 0 10px 8px; font-size: 11px; color: var(--suave); }
-  .nb-log li b { color: var(--cor2); font-weight: 600; margin-right: 6px; }
 
   #bolha { text-align: center; max-width: 680px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
   #bolha-rotulo { font-size: 11px; font-weight: 600; letter-spacing: .3em; color: var(--cor2); text-transform: uppercase; }
@@ -367,8 +357,6 @@
       <div class="relogio"><div id="hora">--:--</div><div id="data"></div></div>
       <button class="redondo" id="btn-busca" title="Pesquisar (Bing, na mini tela)">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button>
-      <button class="redondo" data-cmd="abre a mini tela flutuante" title="Mini tela flutuante, sempre por cima">
-        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="12" y="12" width="7" height="7" rx="1"/></svg></button>
     </div>
   </header>
 
@@ -541,9 +529,9 @@
       <ul class="detalhes">
         <li><b>E-mail</b> <span id="email-texto">verificando…</span></li>
         <li><b>IAs</b> Claude primeiro; se acabar o crédito, Groq e as outras do .env</li>
-        <li><b>Modo isolado</b> <span id="isolado-texto">ligado: tudo abre só no notebook virtual</span></li>
+        <li><b>Modo isolado</b> <span id="isolado-texto">desligado: o mini notebook é o seu PC (janelas atrás do Braga)</span></li>
       </ul>
-      <div class="linha"><button class="botao forte" data-cmd="liga o modo isolado">Ligar modo isolado</button><button class="botao" data-cmd="desliga o modo isolado">Desligar (pede confirmação)</button></div>
+      <div class="linha"><button class="botao" data-cmd="liga o modo isolado">Ligar modo isolado</button><button class="botao" data-cmd="desliga o modo isolado">Desligar (pede confirmação)</button></div>
       <ul id="detalhes" class="detalhes"></ul>
       <h2>Processamento <small>CPU</small></h2>
       <canvas id="fluxo"></canvas>
@@ -977,8 +965,9 @@
     },
     aviso(texto) { avisar(texto); registrar("Braga", texto); },
     isolado(ligado) {
-      $("#isolado-texto").textContent = ligado ? "ligado: tudo abre só no notebook virtual" : "desligado: abre no PC";
-      $("#usuario-modo").textContent = ligado ? "isolado" : "PC liberado";
+      $("#isolado-texto").textContent = ligado ? "ligado: tudo abre só no notebook virtual"
+        : "desligado: o mini notebook é o seu PC (janelas atrás do Braga)";
+      $("#usuario-modo").textContent = ligado ? "isolado" : "protegido";
     },
     comandoProposto(frases, descricao) {
       const caixa = $("#cmd-proposto");
@@ -1043,10 +1032,9 @@
       fora.title = "Abrir no navegador";
       fora.onclick = (e) => {
         e.stopPropagation();
-        if (tipo === "notebook") return pywebview.api.abrir_notebook_flutuante();
         pywebview.api.abrir_no_navegador(tipo === "navegador" ? mini.url : (externo || url));
       };
-      if (tipo === "notebook") fora.title = "Notebook flutuante, sempre por cima";
+      if (tipo === "notebook") fora.hidden = true;  // o notebook não sai do Braga
       const fechar = document.createElement("i");
       fechar.textContent = "✕";
       fechar.title = "Fechar aba";
@@ -1232,14 +1220,14 @@
       el.className = "nb";
       el.innerHTML = `
         <div class="nb-barra">
-          <b>MINI NOTEBOOK</b><span class="nb-selo">BRAGA CONTROLANDO</span><span class="espaco"></span>
+          <b>MINI NOTEBOOK</b><span class="nb-selo">BRAGA CONTROLANDO</span>
+          <input class="nb-pedir" placeholder="Pedir ao Braga no notebook (ou corrigir enquanto ele age)" autocomplete="off">
           <button data-nb="pausar" title="Pausar ou retomar o Braga">⏸ Pausar</button>
           <button data-nb="parar" title="Parar a tarefa do Braga">■ Parar</button>
           <label class="check" title="Freio: jogar o mouse no canto superior esquerdo para tudo"><input type="checkbox" class="nb-freio" checked> Freio</label>
-          <button data-nb="fonte" title="Virtual: tudo roda dentro do Braga, nada abre no seu PC. PC real: mouse e teclado de verdade na sua tela">🌐 Virtual</button>
-          <button data-nb="menos" title="Afastar (diminuir o zoom)">−</button><span class="nb-zoom" title="Zoom do notebook">100%</span><button data-nb="mais" title="Aproximar (aumentar o zoom)">+</button>
+          <button data-nb="fonte" title="PC real: o seu notebook de verdade (as janelas ficam atrás do Braga). Virtual: o navegador do Braga (Maps, WhatsApp Web)">🖥 PC real</button>
+          <button data-nb="menos" title="Afastar">−</button><span class="nb-zoom" title="Zoom: o notebook cresce e o teclado continua à vista">100%</span><button data-nb="mais" title="Aproximar (o teclado continua à vista)">+</button>
           <button data-nb="teclado" title="Mostrar ou esconder o teclado e o touchpad">⌨</button>
-          <button data-nb="flutuante" title="Notebook flutuante, sempre por cima">⧉</button>
         </div>
         <div class="nb-palco"><div class="nb-mundo">
           <div class="laptop" tabindex="0" title="Com o notebook selecionado, o seu teclado também digita nele">
@@ -1260,10 +1248,7 @@
             </div></div>
           </div>
         </div></div>
-        <div class="nb-baixo">
-          <input class="nb-pedir" placeholder="Pedir ao Braga (ou corrigir enquanto ele age)" autocomplete="off">
-        </div>
-        <ol class="nb-log"></ol>`;
+        <div class="nb-ultima"></div>`;
       this.el = el;
       this.img = el.querySelector("img");
       this.montarTeclado(el.querySelector(".teclado"));
@@ -1303,7 +1288,6 @@
       }, { passive: false });
       el.querySelector('[data-nb="pausar"]').onclick = () => this.acao(this.estado?.pausado ? "retomar" : "pausar");
       el.querySelector('[data-nb="parar"]').onclick = () => this.acao("parar");
-      el.querySelector('[data-nb="flutuante"]').onclick = () => pywebview.api.abrir_notebook_flutuante();
       el.querySelector(".nb-freio").onchange = (e) => this.acao("freio", null, e.target.checked);
       const pedir = el.querySelector(".nb-pedir");
       pedir.addEventListener("keydown", (e) => {
@@ -1442,41 +1426,38 @@
     },
     // o notebook 3D é desenhado em 1000 px de largura: cabe inteiro no espaço (100%) e o zoom aproxima mais,
     // com barras de rolagem para andar pelo notebook ampliado
-    ZOOMS: [1, 1.25, 1.5, 1.75, 2, 2.5, 3],
-    zoom: 1,
+    // zoom sem perder o teclado: cada passo "abaixa a câmera" (o teclado inclina mais e ocupa menos altura) e o
+    // notebook inteiro cresce até caber; tela, teclado e touchpad ficam sempre à vista, sem rolagem
+    INCLINACOES: [63, 68, 72, 75, 78],
+    zoom: 0,
     mudarZoom(passo) {
-      const i = this.ZOOMS.indexOf(this.zoom);
-      this.zoom = this.ZOOMS[Math.min(this.ZOOMS.length - 1, Math.max(0, (i < 0 ? 0 : i) + passo))];
+      this.zoom = Math.min(this.INCLINACOES.length - 1, Math.max(0, this.zoom + passo));
       try { localStorage.setItem("braga-zoom-notebook", this.zoom); } catch (_) {}
-      this.encaixar(true);
+      this.encaixar();
+      setTimeout(() => this.encaixar(), 80);  // mede de novo com a inclinação nova já desenhada
     },
-    encaixar(centralizar = false) {
+    encaixar() {
       const palco = this.el?.querySelector(".nb-palco"), mundo = this.el?.querySelector(".nb-mundo");
       const laptop = this.el?.querySelector(".laptop");
       if (!palco || !palco.clientWidth) return;
       const soTela = laptop.classList.contains("so-tela");
+      const angulo = this.INCLINACOES[this.zoom] || 63;
+      for (const s of [".base", ".anel"]) laptop.querySelector(s).style.transform = `rotateX(${angulo}deg)`;
       // mede o tamanho desenhado de verdade (a base inclinada em 3D) e divide pela escala atual
       const atual = this.escala || 1, topo = laptop.getBoundingClientRect().top;
-      const partes = soTela ? [".tampa"] : [".tampa", ".base"];  // o anel do chão pode ficar cortado
+      const partes = soTela ? [".tampa"] : [".tampa", ".base", ".touchpad"];  // o anel do chão pode ficar cortado
       const fundo = Math.max(...partes.map((s) => laptop.querySelector(s).getBoundingClientRect().bottom));
-      const altura = (fundo - topo) / atual + 8, largura = soTela ? 1004 : 1100;
-      const caber = Math.min(palco.clientWidth / largura, (palco.clientHeight - 8) / altura);
-      const escala = caber * this.zoom;
-      const ampliado = this.zoom > 1;
-      palco.classList.toggle("ampliado", ampliado);
-      const mundoL = ampliado ? Math.max(palco.clientWidth, largura * escala) : palco.clientWidth;
-      const mundoA = ampliado ? Math.max(palco.clientHeight, altura * escala + 8) : palco.clientHeight;
-      mundo.style.width = mundoL + "px";
-      mundo.style.height = mundoA + "px";
-      laptop.style.left = (mundoL - 1000 * escala) / 2 + "px";
-      this.el.querySelector(".nb-zoom").textContent = Math.round(this.zoom * 100) + "%";
+      const altura = (fundo - topo) / atual + 6, largura = soTela ? 1004 : 1090;
+      const escala = Math.min(palco.clientWidth / largura, (palco.clientHeight - 6) / altura);
+      mundo.style.width = palco.clientWidth + "px";
+      mundo.style.height = palco.clientHeight + "px";
+      laptop.style.left = (palco.clientWidth - 1000 * escala) / 2 + "px";
+      if (this.zoom === 0) this.escalaBase = escala;
+      this.el.querySelector(".nb-zoom").textContent =
+        Math.round(100 * escala / (this.escalaBase || escala)) + "%";
       if (Math.abs(escala - atual) >= 0.002) {
         this.escala = escala;
         laptop.style.transform = `scale(${escala})`;
-      }
-      if (centralizar) {  // depois do zoom, mostra o meio da tela do notebook
-        palco.scrollLeft = (mundoL - palco.clientWidth) / 2;
-        palco.scrollTop = Math.max(0, 324 * escala - palco.clientHeight / 2);
       }
     },
     // ponto do clique de 0 a 1 na tela real, descontando as faixas pretas do object-fit: contain
@@ -1490,7 +1471,7 @@
       return { x, y };
     },
     // ---------- fonte da tela: o PC de verdade ou o navegador do Braga (onde rodam Maps e WhatsApp Web) ----------
-    fonte: null, navInfo: null, cursor: { x: 0.5, y: 0.5 },  // começa no notebook virtual (nada abre no PC)
+    fonte: null, navInfo: null, cursor: { x: 0.5, y: 0.5 },  // começa no PC de verdade (ou no virtual, se isolado)
     async trocarFonte(fonte) {
       if (fonte === "pc" && await pywebview.api.isolamento_estado()) {
         avisar("Modo isolado ligado: o notebook fica no virtual e nada acontece no seu PC. " +
@@ -1542,14 +1523,11 @@
       this.el.classList.toggle("controlando", !!estado.controlando);
       this.el.querySelector('[data-nb="pausar"]').textContent = estado.pausado ? "▶ Retomar" : "⏸ Pausar";
       if (estado.freio !== undefined) this.el.querySelector(".nb-freio").checked = !!estado.freio;
-      const log = this.el.querySelector(".nb-log");
-      log.innerHTML = "";
-      for (const a of (estado.acoes || []).slice(0, 12)) {
-        const li = document.createElement("li");
-        li.innerHTML = `<b>${a.hora}</b>`;
-        li.append(a.texto);
-        log.append(li);
-      }
+      // só a última ação, numa linha (o registro completo fica no painel Tarefa e no Chat)
+      const ultima = (estado.acoes || [])[0], linha = this.el.querySelector(".nb-ultima");
+      linha.innerHTML = ultima ? `<b>${ultima.hora}</b>` : "";
+      if (ultima) linha.append(ultima.texto);
+      linha.title = (estado.acoes || []).slice(0, 12).map((a) => `${a.hora} ${a.texto}`).join("\n");
     },
     quadros() {
       if (this.rodando) return;
@@ -1588,13 +1566,17 @@
       if (!this.encaixarLigado) {
         this.encaixarLigado = true;
         addEventListener("resize", () => this.encaixar());
-        try { this.zoom = this.ZOOMS.includes(+localStorage.getItem("braga-zoom-notebook")) ? +localStorage.getItem("braga-zoom-notebook") : 1; } catch (_) {}
+        try {
+          const salvo = parseInt(localStorage.getItem("braga-zoom-notebook"), 10);
+          this.zoom = salvo >= 0 && salvo < this.INCLINACOES.length ? salvo : 0;
+        } catch (_) {}
       }
       setTimeout(() => this.encaixar(), 0);
       if (!this.aba()) abas.abrir("Mini notebook", this.URL_ABA, "notebook");
       else abas.mostrar(this.aba().id);
       this.mostrarEstado(this.info);
-      if (fonte || !this.fonte) await this.trocarFonte(fonte || "navegador");
+      // padrão: o PC de verdade (as janelas ficam atrás do Braga); no modo isolado, o notebook virtual
+      if (fonte || !this.fonte) await this.trocarFonte(fonte || (await pywebview.api.isolamento_estado() ? "navegador" : "pc"));
       this.quadros();
     },
   };

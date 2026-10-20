@@ -346,6 +346,7 @@ def _abrir(alvo):
     elif isolamento.ligado():
         return isolamento.abrir(alvo)
     else:
+        isolamento.antes_de_abrir_no_pc()  # o programa abre atrás do Braga, no mini notebook
         subprocess.Popen(f'start "" "{alvo}"', shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
     return True
 
@@ -637,9 +638,13 @@ def executar(comando, mini_tela=False, url_mini=""):
     no_pc = re.match(r"^(?:no|na|pelo)\s+(?:meu\s+)?(?:pc|computador|notebook)\s+(?:real|de verdade)[,:\s]+(?:e\s+)?(.+)", t)
     if no_pc:
         return {"acao": "modo_tela", "tarefa": _com_acentos(no_pc.group(1), t, original), "virtual": False}
-    no_notebook = re.match(r"^(?:no|na|pelo|usa\w*\s+o|controla\w*\s+o)\s+(?:mini\s+)?notebook(?:\s+virtual)?[,:\s]+(?:e\s+)?(.+)", t)
+    no_virtual = re.match(r"^(?:no|na|pelo)\s+(?:mini\s+)?notebook\s+virtual[,:\s]+(?:e\s+)?(.+)", t)
+    if no_virtual:
+        return {"acao": "modo_tela", "tarefa": _com_acentos(no_virtual.group(1), t, original), "virtual": True}
+    # "no notebook, ..." = o PC de verdade, mostrado e mexido pelo mini notebook (as janelas ficam atrás do Braga)
+    no_notebook = re.match(r"^(?:no|na|pelo|usa\w*\s+o|controla\w*\s+o)\s+(?:mini\s+)?notebook[,:\s]+(?:e\s+)?(.+)", t)
     if no_notebook:
-        return {"acao": "modo_tela", "tarefa": _com_acentos(no_notebook.group(1), t, original), "virtual": True}
+        return {"acao": "modo_tela", "tarefa": _com_acentos(no_notebook.group(1), t, original), "virtual": False}
 
     gatilho_tela = re.search(
         r"\b(ve|vê|veja|olha|olhe|controla|controle|assume|assuma|usa|use)\s+(a\s+|na\s+|minha\s+)?tela\b"
@@ -797,7 +802,7 @@ def executar(comando, mini_tela=False, url_mini=""):
             if nome in alvo:
                 if not _abrir(endereco):
                     return isolamento.bloqueado(falado)
-                return f"Abrindo {falado}" + (" no notebook virtual." if isolamento.ligado() else ".")
+                return f"Abrindo {falado}" + (" no notebook virtual." if isolamento.ligado() else " no mini notebook.")
         # não está na lista: procura entre os programas instalados (Menu Iniciar)
         programa = _achar_programa(alvo)
         if programa:

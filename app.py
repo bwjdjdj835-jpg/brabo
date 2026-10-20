@@ -1028,6 +1028,16 @@ class Jarvis:
         import isolamento
         return isolamento.ligado()
 
+    def _preparar_pc(self):
+        """Antes de abrir algo no PC de verdade: o Braga vem para a frente, mostra o mini notebook e fica por cima
+        de tudo. A janela nova nasce atrás dele e o senhor a vê (e mexe nela) pelo mini notebook."""
+        import notebook
+        self.mostrar_principal()
+        self._ui("abrirNotebook", "pc")
+        notebook.captura.quadro()  # liga a captura, que mantém o Braga por cima enquanto o notebook está aberto
+        notebook.primeira_pessoa(True)
+        time.sleep(0.4)
+
     def _modo_isolado(self, ligar):
         import isolamento
         if ligar:
@@ -1254,7 +1264,7 @@ class Jarvis:
         if acao == "modo_isolado":
             return self._modo_isolado(pedido["ligar"])
         if acao == "modo_tela":
-            return self._modo_tela(pedido["tarefa"], pedido.get("virtual", True))
+            return self._modo_tela(pedido["tarefa"], pedido.get("virtual", False))
         if acao == "notebook_abrir":
             if pedido.get("flutuante"):
                 return self.abrir_notebook_flutuante()
@@ -1793,11 +1803,12 @@ class Jarvis:
         self._pendente = corrigir
         return fala + " Quer que eu peça ao Claude para corrigir?"
 
-    def _modo_tela(self, tarefa, virtual=True):
+    def _modo_tela(self, tarefa, virtual=False):
         """Ferramenta controlar_notebook, no mini notebook 3D, passo a passo. O senhor pode pausar, parar ou
         corrigir no meio (botões ou voz).
-        virtual (padrão): o Braga age no navegador dele, que só aparece dentro do Braga: nada abre no PC real.
-        virtual=False ("no PC real, ...", "usa a tela e ..."): mouse e teclado de verdade na tela do notebook."""
+        Padrão ("no notebook, ...", "usa a tela e ..."): o PC de verdade, mouse e teclado reais; as janelas ficam
+        atrás do Braga e aparecem só no mini notebook. virtual=True ("no notebook virtual, ..."): no navegador do
+        Braga, sem tocar no PC."""
         import notebook
         if notebook.sessao.controlando:
             if tarefa.strip():  # pedido novo no meio da tarefa = correção
@@ -2135,6 +2146,7 @@ def _abrir_projeto(pasta):
         studio = os.path.join(claude_code.STUDIO, "bin", "studio64.exe")
         import isolamento
         if os.path.exists(studio) and not isolamento.ligado():  # no modo isolado o Android Studio não abre no PC
+            isolamento.antes_de_abrir_no_pc()
             subprocess.Popen([studio, pasta])
         apk = claude_code.apk_de(pasta)
         # mostra o APK selecionado no explorador de arquivos
@@ -2154,6 +2166,7 @@ def _editar(caminho):
     if isolamento.ligado():
         isolamento.abrir(caminho)
     else:
+        isolamento.antes_de_abrir_no_pc()  # o Bloco de Notas abre atrás do Braga, no mini notebook
         subprocess.Popen(["notepad", caminho])
 
 
@@ -2165,6 +2178,7 @@ def _mostrar_arquivo(caminho):
     if isolamento.ligado():
         isolamento.abrir(caminho)
         return
+    isolamento.antes_de_abrir_no_pc()  # o Explorador abre atrás do Braga, no mini notebook
     explorer = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "explorer.exe")
     try:
         if os.path.isfile(caminho):
@@ -2210,6 +2224,7 @@ def main():
     isolamento.instalar()
     isolamento.ao_abrir = jarvis._abrir_no_virtual
     isolamento.ao_bloquear = lambda frase: jarvis._ui("aviso", frase)
+    isolamento.ao_abrir_no_pc = jarvis._preparar_pc
     biblioteca.ao_concluir = jarvis._biblioteca_pronta
     biblioteca.preparar()
     enviar_email.preparar()

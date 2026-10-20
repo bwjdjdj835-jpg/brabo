@@ -1,5 +1,11 @@
-"""Modo isolado (ligado por padrão): tudo o que o Braga faria aparecer no PC do senhor aparece só dentro do
-Braga, no notebook virtual (o navegador invisível do Braga, mostrado na tela do notebook 3D).
+"""Como o Braga abre sites, arquivos, pastas e programas.
+
+Padrão (modo isolado DESLIGADO): o mini notebook é o PC de verdade. Antes de abrir qualquer coisa no PC, o Braga
+mostra o mini notebook e fica por cima de tudo (ao_abrir_no_pc); a janela nova nasce ATRÁS do Braga e o senhor vê
+e mexe nela pelo mini notebook. Fechando o Braga, está tudo lá no notebook de verdade.
+
+Modo isolado (só se o senhor pedir): tudo o que o Braga faria aparecer no PC aparece só dentro do Braga, no
+notebook virtual (o navegador invisível do Braga, mostrado na tela do notebook 3D).
 
 - Sites (webbrowser.open): abrem no notebook virtual, não no Edge/Chrome do Windows.
 - Arquivos e pastas (os.startfile, Explorador): abrem no notebook virtual como file:/// (vídeo, PDF, site, foto e
@@ -8,7 +14,8 @@ Braga, no notebook virtual (o navegador invisível do Braga, mostrado na tela do
   teclado de verdade): bloqueados enquanto o modo isolado estiver ligado.
 Os comandos de terminal que o Braga roda por dentro (Claude Code, gh, yt-dlp) já são escondidos (sem janela).
 
-Desligar: "desliga o modo isolado" (com confirmação). O estado fica em isolamento.json.
+Ligar: "liga o modo isolado"; desligar: "desliga o modo isolado" (com confirmação). O estado fica em
+isolamento.json.
 """
 import json
 import logging
@@ -22,17 +29,27 @@ MOSTRAVEIS = (".html", ".htm", ".pdf", ".mp4", ".webm", ".mp3", ".png", ".jpg", 
               ".txt", ".md", ".json", ".csv", ".log", ".env", ".py", ".js", ".css")
 
 log = logging.getLogger("jarvis")
-ao_abrir = None     # o app põe aqui a função que mostra um endereço no notebook virtual
-ao_bloquear = None  # e aqui a que avisa o senhor quando algo foi bloqueado
+ao_abrir = None        # o app põe aqui a função que mostra um endereço no notebook virtual
+ao_bloquear = None     # a que avisa o senhor quando algo foi bloqueado
+ao_abrir_no_pc = None  # e a que abre o mini notebook (Braga por cima) antes de algo abrir no PC de verdade
+
+
+def antes_de_abrir_no_pc():
+    """Chamar logo antes de abrir uma janela no PC: ela nasce atrás do Braga, dentro do mini notebook."""
+    if ao_abrir_no_pc:
+        try:
+            ao_abrir_no_pc()
+        except Exception:
+            log.debug("Não consegui preparar o mini notebook antes de abrir", exc_info=True)
 _originais = {}
 
 
 def ligado():
     try:
         with open(ARQUIVO, encoding="utf-8") as arquivo:
-            return bool(json.load(arquivo).get("ligado", True))
+            return bool(json.load(arquivo).get("ligado", False))
     except (OSError, ValueError):
-        return True  # sem arquivo: isolado
+        return False  # sem arquivo: o mini notebook é o PC de verdade (o que abre fica atrás do Braga)
 
 
 def ligar(sim=True):
@@ -64,6 +81,7 @@ def bloqueado(o_que, verbo="abro"):
 def abrir(alvo):
     """Abre um site, arquivo ou pasta no notebook virtual (isolado) ou no Windows (desligado). True se abriu."""
     if not ligado():
+        antes_de_abrir_no_pc()
         if str(alvo).startswith(("http://", "https://")):
             return _originais.get("webbrowser", webbrowser.open)(alvo)
         _originais.get("startfile", os.startfile)(alvo)
@@ -93,6 +111,7 @@ def instalar():
 
     def abrir_arquivo(caminho, *args, **kwargs):
         if not ligado():
+            antes_de_abrir_no_pc()
             return _originais["startfile"](caminho, *args, **kwargs)
         abrir(caminho)
 
