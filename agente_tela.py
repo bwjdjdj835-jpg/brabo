@@ -40,8 +40,13 @@ DICAS_NOTEBOOK = (
     "\nVocê está no MINI NOTEBOOK do Braga: a tela real do Windows 11 do usuário. Para abrir um programa ou uma "
     "tela de configurações, o caminho mais certo é: acao 'tecla' com 'win', depois 'digitar' o nome (ex.: "
     "'WhatsApp', 'Bloco de Notas', 'Configurações de som') e 'tecla' 'enter'. Espere ('esperar') o programa "
-    "abrir antes de clicar nele. A janela do Braga pode aparecer na foto: não clique nela, ela não é a tarefa. "
-    "Se chegar uma CORREÇÃO DO USUÁRIO, siga a correção."
+    "abrir antes de clicar nele. Se chegar uma CORREÇÃO DO USUÁRIO, siga a correção.\n"
+    "EXCEÇÃO AO BLOQUEIO, só no mini notebook: quando a tarefa pede para ENVIAR uma mensagem, PUBLICAR ou EXCLUIR "
+    "algo, deixe tudo pronto (texto escrito, destinatário certo) e, em vez de clicar no botão, responda com acao "
+    "'confirmar', o x e o y do botão e, na 'fala', exatamente o que vai acontecer (ex.: \"Vou clicar em Enviar e "
+    "mandar 'Bom dia' para Você (seu próprio número)\"). O Braga pergunta ao usuário e só clica se ele disser sim. "
+    "Comprar, pagar, transferir dinheiro e digitar senhas, cartões ou documentos continuam proibidos: nesses, "
+    "conclua dizendo que o usuário precisa terminar."
 )
 
 INSTRUCOES_NAVEGADOR = INSTRUCOES.replace(
@@ -143,6 +148,11 @@ def executar_tarefa(tarefa, ao_evento=None, alvo=None):
 
         if acao.get("concluido") or acao.get("acao") == "concluir":
             return True, acao.get("resumo") or "Pronto, senhor."
+        if acao.get("acao") == "confirmar" and sessao:
+            # o botão final (enviar/publicar/excluir) fica para o "sim" do usuário: o Braga pergunta e clica
+            sessao.confirmacao = {"fx": float(acao.get("x", 0)) / largura, "fy": float(acao.get("y", 0)) / altura,
+                                  "fala": fala}
+            return True, fala
 
         try:
             _fazer(acao, alvo)

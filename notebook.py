@@ -333,6 +333,7 @@ class Sessao:
         self.acoes = collections.deque(maxlen=80)
         self.controlando = False
         self.tarefa = ""
+        self.confirmacao = None  # {"fx", "fy", "fala"}: botão de enviar/publicar/excluir esperando o "sim"
 
     def comecar(self, tarefa):
         self.parar.clear()

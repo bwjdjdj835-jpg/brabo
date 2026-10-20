@@ -1044,6 +1044,7 @@ class Jarvis:
                 n = normalizar(comando)
                 if re.search(r"\b(sim|confirm\w*|pode|manda|envia|isso|positivo|ok|claro)\b", n):
                     acao, self._pendente = self._pendente, None
+                    self._resposta_pendente = comando  # o "sim" pode vir com detalhes ("sim, manda bom dia")
                     self._mudar_estado("pensando")
                     self._falar(acao())
                     self._estado_parado()
@@ -1689,15 +1690,38 @@ class Jarvis:
             except Exception:
                 log.exception("Falha no mini notebook")
                 resumo = "Não consegui controlar o notebook, senhor."
+            confirmar = notebook.sessao.confirmacao  # o agente parou num botão de enviar/publicar/excluir
+            notebook.sessao.confirmacao = None
             notebook.sessao.terminar(resumo)
             self._ui("tarefa", None, None)
             with self._trava:
-                self._falar(resumo)
+                if confirmar:
+                    self._pendente = lambda: self._notebook_confirmado(tarefa, confirmar)
+                    self._falar(f"{confirmar['fala']} Confirma?")
+                else:
+                    if re.search(r"\?\s*$|\bme diga\b|\bquer que\b|\bposso\b", resumo, re.I):
+                        # terminou oferecendo algo: o "sim" do senhor continua a mesma tarefa
+                        self._pendente = lambda: self._modo_tela(
+                            f"{tarefa}\nNa vez anterior você terminou assim: \"{resumo}\". O usuário respondeu: "
+                            f"\"{getattr(self, '_resposta_pendente', 'sim')}\". Continue a partir daí.")
+                    self._falar(resumo)
                 self._estado_parado()
 
         threading.Thread(target=trabalho, daemon=True).start()
         return ("Entendido, senhor. Vou fazer isso no mini notebook. Dá para pausar, parar ou corrigir por lá. "
                 "Freio: mouse no canto superior esquerdo.")
+
+    def _notebook_confirmado(self, tarefa, confirmar):
+        """O senhor disse sim: o Braga clica no botão que o agente apontou (enviar, publicar, excluir) e confere."""
+        import notebook
+        try:
+            notebook.controle.clicar(confirmar["fx"], confirmar["fy"])
+            notebook.sessao.registrar(f"Confirmado pelo senhor: {confirmar['fala']}")
+        except Exception as erro:
+            log.exception("Mini notebook: falha no clique confirmado")
+            return f"Não consegui clicar, senhor. {str(erro)[:120]}"
+        return self._modo_tela(f"{tarefa}\nO usuário confirmou e o Braga já clicou: {confirmar['fala']} "
+                               "Confira na tela se deu certo e conclua (não clique de novo no mesmo botão).")
 
     def _modo_fundo(self, ligar):
         import fundo
