@@ -186,6 +186,9 @@ def _executar_acao(acao, comando):
         os.startfile(acao.get("caminho", PASTA))
         return "Abrindo a pasta, senhor."
     if tipo == "programa":
+        import isolamento
+        if isolamento.ligado():  # sites e pastas já vão para o notebook virtual; programa não abre no PC
+            return isolamento.bloqueado(os.path.basename(str(acao.get("caminho", "esse programa"))))
         # sem shell: o caminho e os argumentos vão direto ao programa
         subprocess.Popen([acao.get("caminho")] + list(acao.get("args", [])),
                          creationflags=subprocess.CREATE_NO_WINDOW)

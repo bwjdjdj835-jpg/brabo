@@ -135,7 +135,24 @@
   /* o notebook 3D (Lenovo, i5 13ª geração): tampa com a tela ao vivo, teclado e touchpad de verdade */
   #paginas > .nb { background: transparent; border: 0; box-shadow: none; overflow: visible; }
   .nb-palco { position: relative; flex: 1; min-height: 0; overflow: hidden; }
-  .laptop { position: absolute; left: 50%; top: 4px; width: 1000px; margin-left: -500px; transform-origin: top center; outline: none; }
+  .nb-palco.ampliado { overflow: auto; scrollbar-color: #2f4f86 transparent; }
+  .nb-palco::-webkit-scrollbar { width: 10px; height: 10px; }
+  .nb-palco::-webkit-scrollbar-thumb { background: #2f4f86; border-radius: 999px; }
+  .nb-palco::-webkit-scrollbar-track, .nb-palco::-webkit-scrollbar-corner { background: transparent; }
+  .nb-mundo { position: relative; }
+  .laptop { position: absolute; left: 0; top: 4px; width: 1000px; transform-origin: top left; outline: none; }
+  .nb-zoom { min-width: 54px; text-align: center; font-size: 12px; color: var(--suave); font-variant-numeric: tabular-nums; }
+  /* com o notebook aberto, ele ganha a janela: menu só com ícones, sem a coluna da direita */
+  body.com-notebook .app { grid-template-columns: 64px minmax(0, 1fr); }
+  body.com-notebook .direita, body.com-notebook .sempre, body.com-notebook .cartao-voz div { display: none; }
+  body.com-notebook .menu { padding: 8px 6px; }
+  body.com-notebook .menu button { font-size: 0; justify-content: center; padding: 0; gap: 0; }
+  body.com-notebook .cartao-voz { justify-content: center; padding: 10px 4px; }
+  body.com-notebook .voz { padding: 4px 10px; }
+  body.com-notebook .voz .redondo { width: 38px; height: 38px; }
+  body.com-notebook #onda { height: 34px; }
+  body.com-notebook .centro { gap: 8px; }
+  body.com-notebook .nb-log { max-height: 34px; }
   .tampa { position: relative; width: 1000px; height: 640px; padding: 22px 22px 36px; border-radius: 22px 22px 6px 6px;
            background: linear-gradient(160deg, #34343a, #1d1d21 60%, #26262b); box-shadow: 0 0 0 1px #45454d, 0 30px 60px rgba(0,0,0,.65); }
   .tampa::before { content: ""; position: absolute; top: 8px; left: 50%; width: 7px; height: 7px; margin-left: -3px;
@@ -524,7 +541,9 @@
       <ul class="detalhes">
         <li><b>E-mail</b> <span id="email-texto">verificando…</span></li>
         <li><b>IAs</b> Claude primeiro; se acabar o crédito, Groq e as outras do .env</li>
+        <li><b>Modo isolado</b> <span id="isolado-texto">ligado: tudo abre só no notebook virtual</span></li>
       </ul>
+      <div class="linha"><button class="botao forte" data-cmd="liga o modo isolado">Ligar modo isolado</button><button class="botao" data-cmd="desliga o modo isolado">Desligar (pede confirmação)</button></div>
       <ul id="detalhes" class="detalhes"></ul>
       <h2>Processamento <small>CPU</small></h2>
       <canvas id="fluxo"></canvas>
@@ -869,7 +888,8 @@
   window.jarvis = {
     estado(s) {
       estadoAtual = s;
-      document.body.className = s + (tarefaAtiva ? " trabalhando" : "") + (abas.ativa !== "jarvis" ? " com-pagina" : "");
+      document.body.className = s + (tarefaAtiva ? " trabalhando" : "") + (abas.ativa !== "jarvis" ? " com-pagina" : "")
+        + (abas.lista.find((a) => a.id === abas.ativa)?.tipo === "notebook" ? " com-notebook" : "");
       orbCor(CORES[s] || "#3d8bff");
       $("#estado").textContent = NOMES_ESTADO[s] || s.toUpperCase();
       $("#voz-estado").textContent = VOZ_ESTADO[s] || s;
@@ -954,6 +974,11 @@
         li.append(titulo, desc, apagar);
         ul.append(li);
       }
+    },
+    aviso(texto) { avisar(texto); registrar("Braga", texto); },
+    isolado(ligado) {
+      $("#isolado-texto").textContent = ligado ? "ligado: tudo abre só no notebook virtual" : "desligado: abre no PC";
+      $("#usuario-modo").textContent = ligado ? "isolado" : "PC liberado";
     },
     comandoProposto(frases, descricao) {
       const caixa = $("#cmd-proposto");
@@ -1041,6 +1066,8 @@
       this.botaoJarvis.classList.toggle("ativa", id === "jarvis");
       $("#paginas").classList.toggle("visivel", id !== "jarvis");
       document.body.classList.toggle("com-pagina", id !== "jarvis");
+      document.body.classList.toggle("com-notebook", this.lista.find((a) => a.id === id)?.tipo === "notebook");
+      setTimeout(() => nb.encaixar(), 60);  // a coluna da direita some/volta: o notebook se ajusta
       $("#abas").hidden = !this.lista.length;
       redimensionarOrb();
       // conta ao Braga qual aba está na frente: com a mini tela, "pesquisa X" e "volta" valem para ela
@@ -1210,10 +1237,11 @@
           <button data-nb="parar" title="Parar a tarefa do Braga">■ Parar</button>
           <label class="check" title="Freio: jogar o mouse no canto superior esquerdo para tudo"><input type="checkbox" class="nb-freio" checked> Freio</label>
           <button data-nb="fonte" title="Virtual: tudo roda dentro do Braga, nada abre no seu PC. PC real: mouse e teclado de verdade na sua tela">🌐 Virtual</button>
+          <button data-nb="menos" title="Afastar (diminuir o zoom)">−</button><span class="nb-zoom" title="Zoom do notebook">100%</span><button data-nb="mais" title="Aproximar (aumentar o zoom)">+</button>
           <button data-nb="teclado" title="Mostrar ou esconder o teclado e o touchpad">⌨</button>
           <button data-nb="flutuante" title="Notebook flutuante, sempre por cima">⧉</button>
         </div>
-        <div class="nb-palco">
+        <div class="nb-palco"><div class="nb-mundo">
           <div class="laptop" tabindex="0" title="Com o notebook selecionado, o seu teclado também digita nele">
             <div class="tampa">
               <div class="tela-nb" title="Clique, clique duplo, botão direito e rodinha acontecem de verdade no notebook">
@@ -1231,7 +1259,7 @@
               <div class="adesivo">intel<b>CORE i5</b>13th Gen</div>
             </div></div>
           </div>
-        </div>
+        </div></div>
         <div class="nb-baixo">
           <input class="nb-pedir" placeholder="Pedir ao Braga (ou corrigir enquanto ele age)" autocomplete="off">
         </div>
@@ -1246,6 +1274,8 @@
         el.querySelector(".laptop").classList.toggle("so-tela");
         this.encaixar();
       };
+      el.querySelector('[data-nb="mais"]').onclick = () => this.mudarZoom(+1);
+      el.querySelector('[data-nb="menos"]').onclick = () => this.mudarZoom(-1);
       const area = el.querySelector(".tela-nb");
       area.addEventListener("click", (e) => {
         const p = this.ponto(e);
@@ -1410,20 +1440,44 @@
         setTimeout(() => { this.acao("rolar", null, Math.round(rolagem)); rolagem = 0; rolando = false; }, 150);
       }, { passive: false });
     },
-    // o notebook 3D é desenhado em 1000 px de largura e encolhe para caber no espaço
-    encaixar() {
-      const palco = this.el?.querySelector(".nb-palco"), laptop = this.el?.querySelector(".laptop");
+    // o notebook 3D é desenhado em 1000 px de largura: cabe inteiro no espaço (100%) e o zoom aproxima mais,
+    // com barras de rolagem para andar pelo notebook ampliado
+    ZOOMS: [1, 1.25, 1.5, 1.75, 2, 2.5, 3],
+    zoom: 1,
+    mudarZoom(passo) {
+      const i = this.ZOOMS.indexOf(this.zoom);
+      this.zoom = this.ZOOMS[Math.min(this.ZOOMS.length - 1, Math.max(0, (i < 0 ? 0 : i) + passo))];
+      try { localStorage.setItem("braga-zoom-notebook", this.zoom); } catch (_) {}
+      this.encaixar(true);
+    },
+    encaixar(centralizar = false) {
+      const palco = this.el?.querySelector(".nb-palco"), mundo = this.el?.querySelector(".nb-mundo");
+      const laptop = this.el?.querySelector(".laptop");
       if (!palco || !palco.clientWidth) return;
       const soTela = laptop.classList.contains("so-tela");
       // mede o tamanho desenhado de verdade (a base inclinada em 3D) e divide pela escala atual
       const atual = this.escala || 1, topo = laptop.getBoundingClientRect().top;
-      const partes = soTela ? [".tampa"] : [".tampa", ".base"];  // o anel do chão pode ficar cortado embaixo
+      const partes = soTela ? [".tampa"] : [".tampa", ".base"];  // o anel do chão pode ficar cortado
       const fundo = Math.max(...partes.map((s) => laptop.querySelector(s).getBoundingClientRect().bottom));
-      const altura = (fundo - topo) / atual + 12;
-      const escala = Math.min(palco.clientWidth / (soTela ? 1010 : 1240), palco.clientHeight / altura);
-      if (Math.abs(escala - atual) < 0.002) return;
-      this.escala = escala;
-      laptop.style.transform = `scale(${escala})`;
+      const altura = (fundo - topo) / atual + 8, largura = soTela ? 1004 : 1100;
+      const caber = Math.min(palco.clientWidth / largura, (palco.clientHeight - 8) / altura);
+      const escala = caber * this.zoom;
+      const ampliado = this.zoom > 1;
+      palco.classList.toggle("ampliado", ampliado);
+      const mundoL = ampliado ? Math.max(palco.clientWidth, largura * escala) : palco.clientWidth;
+      const mundoA = ampliado ? Math.max(palco.clientHeight, altura * escala + 8) : palco.clientHeight;
+      mundo.style.width = mundoL + "px";
+      mundo.style.height = mundoA + "px";
+      laptop.style.left = (mundoL - 1000 * escala) / 2 + "px";
+      this.el.querySelector(".nb-zoom").textContent = Math.round(this.zoom * 100) + "%";
+      if (Math.abs(escala - atual) >= 0.002) {
+        this.escala = escala;
+        laptop.style.transform = `scale(${escala})`;
+      }
+      if (centralizar) {  // depois do zoom, mostra o meio da tela do notebook
+        palco.scrollLeft = (mundoL - palco.clientWidth) / 2;
+        palco.scrollTop = Math.max(0, 324 * escala - palco.clientHeight / 2);
+      }
     },
     // ponto do clique de 0 a 1 na tela real, descontando as faixas pretas do object-fit: contain
     ponto(e) {
@@ -1438,6 +1492,11 @@
     // ---------- fonte da tela: o PC de verdade ou o navegador do Braga (onde rodam Maps e WhatsApp Web) ----------
     fonte: null, navInfo: null, cursor: { x: 0.5, y: 0.5 },  // começa no notebook virtual (nada abre no PC)
     async trocarFonte(fonte) {
+      if (fonte === "pc" && await pywebview.api.isolamento_estado()) {
+        avisar("Modo isolado ligado: o notebook fica no virtual e nada acontece no seu PC. " +
+               "Para usar o PC real, diga: desliga o modo isolado.");
+        fonte = "navegador";
+      }
       if (fonte === "navegador" && !this.navInfo) {
         this.navInfo = await pywebview.api.navegador_info();
         pywebview.api.navegador_acao("estado").catch(() => {});  // liga o navegador, se ainda não estiver ligado
@@ -1529,6 +1588,7 @@
       if (!this.encaixarLigado) {
         this.encaixarLigado = true;
         addEventListener("resize", () => this.encaixar());
+        try { this.zoom = this.ZOOMS.includes(+localStorage.getItem("braga-zoom-notebook")) ? +localStorage.getItem("braga-zoom-notebook") : 1; } catch (_) {}
       }
       setTimeout(() => this.encaixar(), 0);
       if (!this.aba()) abas.abrir("Mini notebook", this.URL_ABA, "notebook");
@@ -1699,6 +1759,7 @@
     mostrarPainel(painel);
     pywebview.api.lista_biblioteca().then(jarvis.biblioteca);
     pywebview.api.comandos_listar().then(jarvis.comandos);
+    if (pywebview.api.isolamento_estado) pywebview.api.isolamento_estado().then(jarvis.isolado);
     if (pywebview.api.skills_listar) pywebview.api.skills_listar().then(jarvis.skills);
     atualizarStatus();
     setInterval(atualizarStatus, 2000);

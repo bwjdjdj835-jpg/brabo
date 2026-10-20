@@ -556,14 +556,16 @@ class Jarvis:
     def _entregar_pasta(self, pasta):
         """Fim de prospecção ou fábrica: atalho "Jarvis - Envios" na Área de Trabalho apontando para a pasta (com os
         vídeos MP4 e os contatos) e a pasta aberta na tela. Devolve o atalho, ou None se não deu para criar."""
+        import isolamento
         import prospeccao
         self._ui("nota", pasta)
         atalho = None
-        try:
-            atalho = prospeccao.atalho_na_area_de_trabalho(pasta)
-            self._ui("nota", atalho)
-        except Exception:
-            log.warning("Não consegui criar o atalho de envios", exc_info=True)
+        if not isolamento.ligado():  # no modo isolado a área de trabalho do PC fica como está
+            try:
+                atalho = prospeccao.atalho_na_area_de_trabalho(pasta)
+                self._ui("nota", atalho)
+            except Exception:
+                log.warning("Não consegui criar o atalho de envios", exc_info=True)
         _mostrar_arquivo(pasta)
         return atalho
 
@@ -1008,7 +1010,40 @@ class Jarvis:
         return biblioteca.listar()[:40]
 
     def abrir_meus_dados(self):
-        subprocess.Popen(["notepad", biblioteca.MEUS_DADOS])
+        _editar(biblioteca.MEUS_DADOS)
+
+    # ---------- modo isolado: o que abriria no PC abre no notebook virtual ----------
+    def _abrir_no_virtual(self, endereco):
+        """Mostra um site, arquivo ou pasta (file:///) no navegador do Braga, na tela do notebook 3D."""
+        def trabalho():
+            import navegador
+            try:
+                navegador.abrir(endereco)
+            except Exception:
+                log.warning("Notebook virtual: não abri %s", endereco, exc_info=True)
+            self._ui("abrirNotebook", "navegador")
+        threading.Thread(target=trabalho, daemon=True).start()
+
+    def isolamento_estado(self):
+        import isolamento
+        return isolamento.ligado()
+
+    def _modo_isolado(self, ligar):
+        import isolamento
+        if ligar:
+            isolamento.ligar(True)
+            self._ui("isolado", True)
+            return ("Modo isolado ligado, senhor. Tudo abre só dentro do Braga, no notebook virtual; o seu PC fica "
+                    "sem janelas e abas novas.")
+
+        def desligar():
+            isolamento.ligar(False)
+            self._ui("isolado", False)
+            return "Modo isolado desligado, senhor. Agora posso abrir programas e janelas no seu PC de novo."
+
+        self._pendente = desligar
+        return ("Desligando o modo isolado, eu volto a abrir sites, pastas e programas no seu PC e posso usar o mouse "
+                "e o teclado de verdade. Confirma?")
 
     def _guardar(self, adicionar, nome):
         try:
@@ -1216,6 +1251,8 @@ class Jarvis:
             return "Abrindo seus dados, senhor. Preencha do seu jeito e salve."
         if acao == "modo_fundo":
             return self._modo_fundo(pedido["ligar"])
+        if acao == "modo_isolado":
+            return self._modo_isolado(pedido["ligar"])
         if acao == "modo_tela":
             return self._modo_tela(pedido["tarefa"], pedido.get("virtual", True))
         if acao == "notebook_abrir":
@@ -1350,7 +1387,7 @@ class Jarvis:
 
         if acao == "config_email":
             enviar_email.preparar()
-            subprocess.Popen(["notepad", enviar_email.CONFIG])
+            _editar(enviar_email.CONFIG)
             return ("Abri a configuração de e-mail, senhor. Coloque seu endereço e a senha de app, e salve. "
                     "Nunca me diga a senha em voz alta.")
         if acao == "email":
@@ -1770,6 +1807,9 @@ class Jarvis:
             return "Ainda estou com outra tarefa, senhor. Aguarde eu terminar."
         if not tarefa.strip():
             return "O que o senhor quer que eu faça no notebook?"
+        import isolamento
+        if not virtual and isolamento.ligado():
+            return isolamento.bloqueado("o mouse e o teclado de verdade", "uso") + " Ou peça no notebook virtual."
 
         def trabalho():
             import agente_tela
@@ -1875,7 +1915,7 @@ class Jarvis:
         """Monta o e-mail e pede confirmação antes de enviar. Nunca envia direto."""
         if not enviar_email.configurado():
             enviar_email.preparar()
-            subprocess.Popen(["notepad", enviar_email.CONFIG])
+            _editar(enviar_email.CONFIG)
             return ("Ainda não configurei seu e-mail, senhor. Abri o arquivo de configuração: coloque seu endereço "
                     "e a senha de app do Gmail, salve, e depois peça de novo.")
         destino, assunto, corpo = enviar_email.interpretar(texto)
@@ -2093,7 +2133,8 @@ class Jarvis:
 def _abrir_projeto(pasta):
     if claude_code.eh_android(pasta):
         studio = os.path.join(claude_code.STUDIO, "bin", "studio64.exe")
-        if os.path.exists(studio):
+        import isolamento
+        if os.path.exists(studio) and not isolamento.ligado():  # no modo isolado o Android Studio não abre no PC
             subprocess.Popen([studio, pasta])
         apk = claude_code.apk_de(pasta)
         # mostra o APK selecionado no explorador de arquivos
@@ -2106,9 +2147,24 @@ def _abrir_projeto(pasta):
         log.warning("Não consegui abrir %s", pasta, exc_info=True)
 
 
+def _editar(caminho):
+    """Arquivo de configuração para o senhor preencher: Bloco de Notas no PC, ou só a leitura no notebook virtual
+    quando o modo isolado está ligado."""
+    import isolamento
+    if isolamento.ligado():
+        isolamento.abrir(caminho)
+    else:
+        subprocess.Popen(["notepad", caminho])
+
+
 def _mostrar_arquivo(caminho):
     """Abre o Explorador com o arquivo selecionado (ou a pasta). Se o Windows negar, só registra:
-    o trabalho já foi feito, e não pode virar "falhou" por causa da janela que mostra o resultado."""
+    o trabalho já foi feito, e não pode virar "falhou" por causa da janela que mostra o resultado.
+    No modo isolado, o arquivo (ou a pasta) aparece no notebook virtual, e nenhuma janela abre no PC."""
+    import isolamento
+    if isolamento.ligado():
+        isolamento.abrir(caminho)
+        return
     explorer = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "explorer.exe")
     try:
         if os.path.isfile(caminho):
@@ -2150,6 +2206,10 @@ def main():
     log.info("Iniciando o Jarvis")
     segredos.preparar()
     jarvis = Jarvis()
+    import isolamento  # modo isolado: sites, arquivos e pastas abrem só no notebook virtual, não no PC
+    isolamento.instalar()
+    isolamento.ao_abrir = jarvis._abrir_no_virtual
+    isolamento.ao_bloquear = lambda frase: jarvis._ui("aviso", frase)
     biblioteca.ao_concluir = jarvis._biblioteca_pronta
     biblioteca.preparar()
     enviar_email.preparar()

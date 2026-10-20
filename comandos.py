@@ -338,10 +338,16 @@ def _tecla(codigo, vezes=1):
 
 
 def _abrir(alvo):
+    """Site ou programa. No modo isolado, sites vão para o notebook virtual e programas não abrem no PC.
+    Devolve False quando o modo isolado bloqueou."""
+    import isolamento
     if alvo.startswith("http"):
-        webbrowser.open(alvo)
+        webbrowser.open(alvo)  # trocado pelo modo isolado: abre no notebook virtual
+    elif isolamento.ligado():
+        return isolamento.abrir(alvo)
     else:
         subprocess.Popen(f'start "" "{alvo}"', shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
+    return True
 
 
 def _limpar(texto, *remover):
@@ -550,6 +556,11 @@ def executar(comando, mini_tela=False, url_mini=""):
     if (tem("videos", "video", "mp4") and tem("pasta", "onde", r"cade", r"mostr\w*", r"salv\w*", "ficam", "estao")
             and not tem(r"baix\w*", r"resum\w*", r"relatori\w*", "toca", "youtube")):
         return {"acao": "abrir_videos"}
+
+    # ----- modo isolado: tudo abre só no notebook virtual (desligar pede confirmação) -----
+    isolado = re.match(r"^(lig\w*|ativ\w*|desliga\w*|desativ\w*)\s+(?:o\s+)?modo\s+isolad\w*", t)
+    if isolado:
+        return {"acao": "modo_isolado", "ligar": not isolado.group(1).startswith("des")}
 
     # ----- código C/19708090: prospecção inteira no notebook 3D (Maps, confirmação na web, skin novo, WhatsApp) -----
     no_nb = re.match(r"^prospec\w*\s+no\s+(?:mini\s+)?notebook\s+(?:de\s+|para\s+|pra\s+)?(.+)", t)
@@ -781,20 +792,27 @@ def executar(comando, mini_tela=False, url_mini=""):
     abrir = re.search(r"\b(?:abr\w*|abra|inici\w*|execut\w*)\s+(?:o |a |os |as |meu |minha )?(.+)", t)
     if abrir:
         alvo = abrir.group(1)
+        import isolamento
         for nome, (falado, endereco) in {**SITES, **PROGRAMAS}.items():
             if nome in alvo:
-                _abrir(endereco)
-                return f"Abrindo {falado}."
+                if not _abrir(endereco):
+                    return isolamento.bloqueado(falado)
+                return f"Abrindo {falado}" + (" no notebook virtual." if isolamento.ligado() else ".")
         # não está na lista: procura entre os programas instalados (Menu Iniciar)
         programa = _achar_programa(alvo)
         if programa:
+            nome_programa = os.path.splitext(os.path.basename(programa[1]))[0]
+            if isolamento.ligado():
+                return isolamento.bloqueado(nome_programa)
             os.startfile(programa[1])
-            return f"Abrindo {os.path.splitext(os.path.basename(programa[1]))[0]}."
+            return f"Abrindo {nome_programa}."
         return f"Ainda não conheço {alvo}, senhor. Dá para me ensinar no arquivo de comandos."
 
     # ----- utilidades -----
     if tem("print", "printa", "captura", "recorte"):
-        _abrir("ms-screenclip:")
+        if not _abrir("ms-screenclip:"):
+            import isolamento
+            return isolamento.bloqueado("a ferramenta de recorte")
         return "Pode selecionar a área da tela."
     if tem("status", "sistema", "bateria", "memoria", "processador", "cpu"):
         return _status()
