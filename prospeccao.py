@@ -49,6 +49,7 @@ MEUS_DADOS = os.path.join(PASTA, "biblioteca", "meus_dados.md")
 PADRAO_NEGOCIOS = 5
 MAX_NEGOCIOS = 15
 SEGUNDOS_DE_VIDEO = 14
+QUADROS_POR_SEGUNDO = 10
 
 log = logging.getLogger("jarvis")
 
@@ -259,31 +260,99 @@ def gravar_video(caminho_html, destino_mp4, segundos=SEGUNDOS_DE_VIDEO, ao_event
         "() => Math.max(0, document.documentElement.scrollHeight - innerHeight)"), limite=20)
     quadros = tempfile.mkdtemp(prefix="jarvis_video_")
     try:
-        inicio, n = time.time(), 0
-        while time.time() - inicio < segundos:
-            fracao = min(1.0, (time.time() - inicio) / segundos)
-            # devagar no começo e no fim, para o vídeo ficar suave
+        # Quadro por quadro, num ritmo fixo (e não "em tempo real"): com o PC ocupado a gravação só demora mais,
+        # mas o vídeo sai sempre suave (antes, com o Claude rodando junto, saía com 2 quadros por segundo).
+        fps = QUADROS_POR_SEGUNDO
+        total = segundos * fps
+        inicio = time.time()
+        for n in range(total):
+            fracao = n / (total - 1)
+            # devagar no começo e no fim, para a rolagem ficar natural
             posicao = int(altura * (fracao * fracao * (3 - 2 * fracao)))
 
             def foto(y=posicao):
                 pagina = navegador._pagina()
-                pagina.evaluate(f"window.scrollTo(0, {y})")
+                pagina.evaluate(f"window.scrollTo({{top: {y}, behavior: 'instant'}})")
+                pagina.wait_for_timeout(40)  # deixa as animações de "aparecer ao rolar" começarem
                 return navegador._foto(pagina, "jpeg", 80)
 
-            imagem = navegador._rodar(foto, limite=20)
+            imagem = navegador._rodar(foto, limite=30)
             with open(os.path.join(quadros, f"q{n:05d}.jpg"), "wb") as arquivo:
                 arquivo.write(imagem)
-            n += 1
-        fps = max(2, round(n / (time.time() - inicio)))
+        n = total
         os.makedirs(os.path.dirname(destino_mp4), exist_ok=True)
         comando = [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-loglevel", "error", "-framerate", str(fps),
                    "-i", os.path.join(quadros, "q%05d.jpg"), "-c:v", "libx264", "-pix_fmt", "yuv420p",
                    "-vf", "scale=1280:-2", "-r", "30", destino_mp4]
         subprocess.run(comando, check=True, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
-        log.info("Prospecção: vídeo %s (%d quadros, %d por segundo)", destino_mp4, n, fps)
+        log.info("Prospecção: vídeo MP4 %s (%d quadros, %d por segundo, gravado em %.0f s)", destino_mp4, n, fps,
+                 time.time() - inicio)
         return destino_mp4
     finally:
         shutil.rmtree(quadros, ignore_errors=True)
+
+
+# ---------- pasta de envio: tudo num lugar só, fácil de achar ----------
+def pacote_de_envio(pasta, titulo, itens, textos, pagina_html=None):
+    """Na pasta dos vídeos MP4 cria "CONTATOS PARA ENVIAR.txt" e contatos.csv (abre no Excel) com nome, telefone,
+    link do WhatsApp, mensagem e o vídeo de cada um, e copia a página de envios. Devolve a pasta."""
+    os.makedirs(pasta, exist_ok=True)
+    linhas = [f"ENVIOS - {titulo}", f"Gerado pelo Jarvis em {datetime.datetime.now():%d/%m/%Y %H:%M}", "",
+              "Como enviar: abra o WhatsApp do contato (link abaixo), copie e cole a mensagem, anexe o vídeo indicado",
+              "(ele está nesta mesma pasta) e envie. Atalho: o arquivo 'ABRIR - página de envios' tem um botão que já",
+              "abre a conversa com a mensagem escrita. Um por um: envio automático em massa é proibido pelo WhatsApp",
+              "e pode banir o seu número. Se alguém pedir para não receber, respeite.", ""]
+    planilha = []
+    for n, (item, texto) in enumerate(zip(itens, textos), 1):
+        zap = whatsapp_de(item.get("telefone"))
+        # link curto (no Bloco de Notas o link nem é clicável; o com a mensagem escrita fica na página de envios)
+        link = f"https://wa.me/{zap}" if zap else ""
+        video = os.path.basename(item.get("video") or "")
+        linhas += [f"{n}) {item['nome']}",
+                   f"   Telefone: {item.get('telefone') or 'não aparece no Google Maps'}",
+                   f"   WhatsApp: {link or 'sem celular no Google Maps (ligue ou procure no Instagram)'}",
+                   f"   Vídeo para mandar: {video or 'não foi gravado'}"]
+        if item.get("publicado"):
+            linhas.append(f"   Site no ar: {item['publicado']}")
+        linhas += ["   Mensagem:", *[f"   {parte}" for parte in texto.split("\n")], ""]
+        planilha.append({"numero": n, "nome": item["nome"], "telefone": item.get("telefone", ""),
+                         "whatsapp": f"https://wa.me/{zap}" if zap else "", "video": video,
+                         "site_publicado": item.get("publicado", ""), "mensagem": texto, "enviado": ""})
+    with open(os.path.join(pasta, "CONTATOS PARA ENVIAR.txt"), "w", encoding="utf-8-sig") as arquivo:
+        arquivo.write("\n".join(linhas))
+    with open(os.path.join(pasta, "contatos.csv"), "w", encoding="utf-8-sig", newline="") as arquivo:
+        escritor = csv.DictWriter(arquivo, fieldnames=list(planilha[0].keys()) if planilha else ["nome"], delimiter=";")
+        escritor.writeheader()
+        escritor.writerows(planilha)
+    if pagina_html and os.path.exists(pagina_html):
+        shutil.copy2(pagina_html, os.path.join(pasta, "ABRIR - página de envios.html"))
+    return pasta
+
+
+def atalho_na_area_de_trabalho(pasta, nome="Jarvis - Envios"):
+    """Atalho na Área de Trabalho para a pasta (sempre o mesmo nome, apontando para a última). Devolve o caminho."""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                            r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders") as chave:
+            area = os.path.expandvars(winreg.QueryValueEx(chave, "Desktop")[0])
+    except OSError:
+        area = os.path.join(os.path.expanduser("~"), "Desktop")
+    destino = os.path.join(area, nome + ".lnk")
+    script = ("$a = (New-Object -ComObject WScript.Shell).CreateShortcut($env:JARVIS_LNK); "
+              "$a.TargetPath = $env:JARVIS_ALVO; $a.Description = 'Pasta de envios do Jarvis'; $a.Save()")
+    try:
+        subprocess.run(["powershell", "-NoProfile", "-Command", script], check=True, timeout=30,
+                       env={**os.environ, "JARVIS_LNK": destino, "JARVIS_ALVO": pasta},
+                       capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        return destino
+    except (OSError, subprocess.SubprocessError):
+        # sem PowerShell (antivírus bloqueou, por exemplo): um atalho de internet também abre a pasta
+        log.warning("Atalho .lnk falhou; criando atalho .url", exc_info=True)
+        destino = os.path.join(area, nome + ".url")
+        with open(destino, "w", encoding="utf-8") as arquivo:
+            arquivo.write(f"[InternetShortcut]\nURL=file:///{pasta.replace(os.sep, '/')}\n")
+        return destino
 
 
 # ---------- 4. mensagens e página de envios ----------
@@ -344,6 +413,8 @@ def pagina_de_envios(busca, negocios, pasta):
 </style></head><body>
 <h1>Prospecção: {e(busca)}</h1>
 <p>{len(negocios)} comércios · gerado pelo Jarvis em {datetime.datetime.now():%d/%m/%Y %H:%M}</p>
+{(lambda v: f'<p>Vídeos MP4 salvos no seu notebook em: <a href="{e(_arquivo(v))}">{e(v)}</a></p>' if v else '')(
+    next((os.path.dirname(n["video"]) for n in negocios if n.get("video")), ""))}
 <div class="aviso">Envie um por um, depois de conferir: <b>Abrir no WhatsApp</b> abre a conversa com a mensagem escrita;
 anexe o vídeo e envie. Disparo automático em massa é proibido pelo WhatsApp e pode banir o seu número.
 Respeite quem pedir para não receber mais mensagens.</div>
@@ -402,6 +473,8 @@ def executar(busca, quantidade=PADRAO_NEGOCIOS, ao_evento=None, gravar=True):
                 negocio["video"] = ""
     _salvar_lista(negocios, pasta)
     envios = pagina_de_envios(busca, negocios, pasta)
+    # tudo de enviar (vídeos MP4, contatos em .txt e .csv, página) na mesma pasta, fácil de achar
+    pacote_de_envio(pasta_mp4, busca, negocios, [mensagem(n) for n in negocios], envios)
     log.info("Prospecção '%s': %d comércios, %d vídeos, em %s", busca, len(negocios), videos, pasta)
     return {"pasta": pasta, "envios": envios, "negocios": len(negocios), "videos": videos, "pasta_videos": pasta_mp4,
-            "com_whatsapp": sum(1 for n in negocios if whatsapp_de(n.get("telefone")))}
+            "pasta_envio": pasta_mp4, "com_whatsapp": sum(1 for n in negocios if whatsapp_de(n.get("telefone")))}

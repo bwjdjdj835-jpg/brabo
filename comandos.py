@@ -510,6 +510,11 @@ def executar(comando, mini_tela=False, url_mini=""):
             and not tem("app", "aplicativo", "site", "projeto", "apk", "email", "pagina", "jogo")):
         return {"acao": "erros"}
 
+    # ----- pasta dos vídeos MP4 (Vídeos\Jarvis, no notebook) -----
+    if (tem("videos", "video", "mp4") and tem("pasta", "onde", r"cade", r"mostr\w*", r"salv\w*", "ficam", "estao")
+            and not tem(r"baix\w*", r"resum\w*", r"relatori\w*", "toca", "youtube")):
+        return {"acao": "abrir_videos"}
+
     # ----- fábrica de sites (código B/07070707): negócios sem site -> site pronto -> publicar com confirmação -----
     if re.match(r"^(?:publica\w*|sobe|subir|hospeda\w*)\s+(?:os\s+|as\s+)?(?:sites?|previas?)\b.*\b(?:github|ar)\b", t):
         return {"acao": "fabrica_publicar"}

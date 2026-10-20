@@ -534,6 +534,8 @@ def pagina_de_entregas(execucao):
 </style></head><body>
 <h1>Fábrica de sites: {e(execucao['busca'])}</h1>
 <p>{len(execucao['itens'])} negócios sem site · gerado pelo Jarvis em {e(execucao['quando'])}</p>
+{(lambda v: f'<p>Vídeos MP4 salvos no seu notebook em: <a href="{e(_arquivo(v))}">{e(v)}</a></p>' if v else '')(
+    next((os.path.dirname(i["video"]) for i in execucao["itens"] if i.get("video")), ""))}
 <div class="aviso">Cada site tem a faixa "prévia de demonstração" e não aparece no Google até o cliente aprovar. As fotos do
 Google Maps estão só no print: peça ao cliente as fotos dele antes de colocar no site. Envie as mensagens uma por uma,
 depois de conferir; disparo automático em massa é proibido pelo WhatsApp e pode banir o seu número.</div>
@@ -635,11 +637,22 @@ def executar(busca, quantidade=PADRAO, ao_evento=None, gravar=True, com_claude=T
         item["publicado"] = ""
         execucao["itens"].append(item)
         _salvar(execucao)  # salva a cada negócio: se algo travar, o que já foi feito fica
-    execucao["pasta_videos"] = pasta_videos
+    execucao["pasta_videos"] = execucao["pasta_envio"] = pasta_videos
     _salvar(execucao)
     execucao["entregas"] = pagina_de_entregas(execucao)
+    _pacote(execucao)
     log.info("Fábrica de sites '%s': %d sites em %s", busca, len(execucao["itens"]), pasta)
     return execucao
+
+
+def _pacote(execucao):
+    """Contatos (.txt e Excel), vídeos MP4 e página de entregas juntos na pasta dos vídeos."""
+    pasta = execucao.get("pasta_envio") or execucao.get("pasta_videos") or os.path.join(
+        VIDEOS, os.path.basename(execucao["pasta"]))
+    execucao["pasta_envio"] = pasta
+    pagina = execucao.get("entregas") or os.path.join(execucao["pasta"], "entregas.html")
+    return prospeccao.pacote_de_envio(pasta, execucao["busca"], execucao["itens"],
+                                      [mensagem(i) for i in execucao["itens"]], pagina)
 
 
 def publicar(pasta, ao_evento=None):
@@ -661,4 +674,6 @@ def publicar(pasta, ao_evento=None):
             log.exception("Falha ao publicar %s", item["nome"])
         _salvar(execucao)
     execucao["entregas"] = pagina_de_entregas(execucao)
+    _pacote(execucao)  # as mensagens agora levam o link do site no ar
+    _salvar(execucao)
     return publicados, execucao

@@ -294,18 +294,11 @@ class Jarvis:
                 self._aba_ativa = "navegador"
                 self._ui("abrirNavegador")  # o senhor acompanha tudo na mini tela
                 r = prospeccao.executar(busca, quantidade, lambda t: self._ui("atividade", t))
-                self._ui("nota", r["envios"])
-                try:
-                    os.startfile(r["envios"])
-                except OSError:
-                    log.warning("Não consegui abrir %s", r["envios"], exc_info=True)
-                if r["videos"]:
-                    self._ui("nota", r["pasta_videos"])
-                    _mostrar_arquivo(r["pasta_videos"])  # os MP4 ficam na pasta Vídeos do notebook
+                atalho = self._entregar_pasta(r["pasta_envio"])
                 fala = (f"Pronto, senhor. Encontrei {r['negocios']} comércios, fiz as prévias e gravei {r['videos']} "
-                        f"vídeos em MP4, que estão na pasta Vídeos, Jarvis, Prospecção. {r['com_whatsapp']} têm "
-                        "celular para WhatsApp. Abri a página de envios: confira cada mensagem, anexe o vídeo e envie "
-                        "um por um.")
+                        f"vídeos em MP4. {r['com_whatsapp']} têm celular para WhatsApp. Abri a pasta de envios"
+                        f"{' e criei o atalho Jarvis Envios na área de trabalho' if atalho else ''}: lá estão os "
+                        "vídeos e o arquivo Contatos para enviar, com os números e as mensagens. Envie um por um.")
             except Exception as erro:
                 log.exception("Falha na prospecção: %s", busca)
                 fala = f"Não consegui terminar a prospecção, senhor. {str(erro)[:150]}"
@@ -319,6 +312,20 @@ class Jarvis:
         threading.Thread(target=trabalho, daemon=True).start()
         return (f"Começando a prospecção de {busca}, senhor: até {quantidade} comércios. Vou mostrando na mini tela; "
                 "leva alguns minutos.")
+
+    def _entregar_pasta(self, pasta):
+        """Fim de prospecção ou fábrica: atalho "Jarvis - Envios" na Área de Trabalho apontando para a pasta (com os
+        vídeos MP4 e os contatos) e a pasta aberta na tela. Devolve o atalho, ou None se não deu para criar."""
+        import prospeccao
+        self._ui("nota", pasta)
+        atalho = None
+        try:
+            atalho = prospeccao.atalho_na_area_de_trabalho(pasta)
+            self._ui("nota", atalho)
+        except Exception:
+            log.warning("Não consegui criar o atalho de envios", exc_info=True)
+        _mostrar_arquivo(pasta)
+        return atalho
 
     def _fabrica_sites(self, busca, quantidade=3):
         """Código B/07070707: negócios sem site no Maps -> print -> domínio -> modelo -> site -> zip -> vídeo ->
@@ -340,16 +347,13 @@ class Jarvis:
                 self._ui("abrirNavegador")
                 r = fabrica_sites.executar(busca, quantidade, lambda t: self._ui("atividade", t))
                 pasta = r["pasta"]
-                self._ui("nota", r["entregas"])
-                try:
-                    os.startfile(r["entregas"])
-                except OSError:
-                    log.warning("Não consegui abrir %s", r["entregas"], exc_info=True)
+                atalho = self._entregar_pasta(r["pasta_envio"])
                 videos = sum(1 for i in r["itens"] if i.get("video"))
                 livres = sum(1 for i in r["itens"] if any(d["situacao"] == "livre" for d in i["dominios"]))
                 fala = (f"Pronto, senhor. Achei {len(r['itens'])} negócios sem site e fiz um site para cada um, com print, "
-                        f"zip e {videos} vídeos em MP4 na pasta Vídeos, Jarvis, Sites. {livres} têm domínio livre. "
-                        "Abri a página de entregas com as mensagens.")
+                        f"zip e {videos} vídeos em MP4. {livres} têm domínio livre. Abri a pasta de envios"
+                        f"{' e criei o atalho Jarvis Envios na área de trabalho' if atalho else ''}: lá estão os "
+                        "vídeos e o arquivo Contatos para enviar.")
             except Exception as erro:
                 log.exception("Falha na fábrica de sites: %s", busca)
                 fala = f"Não consegui terminar os sites, senhor. {str(erro)[:150]}"
@@ -381,10 +385,7 @@ class Jarvis:
                     n, execucao = fabrica_sites.publicar(pasta, lambda t: self._ui("atividade", t))
                     fala = (f"Publiquei {n} sites no GitHub Pages, senhor. Os links já estão nas mensagens; o GitHub "
                             "leva uns minutos para deixar no ar.")
-                    try:
-                        os.startfile(execucao["entregas"])
-                    except OSError:
-                        pass
+                    self._entregar_pasta(execucao["pasta_envio"])  # contatos refeitos, agora com o link do site
                 except Exception as erro:
                     log.exception("Falha ao publicar no GitHub")
                     fala = f"Não consegui publicar, senhor. {str(erro)[:150]}"
@@ -760,6 +761,14 @@ class Jarvis:
             return f"O senhor tem {len(meus)} comando{'s' if len(meus) > 1 else ''}: {nomes}."
         if acao == "navegador_abrir":
             return self._abrir_mini_tela(pedido["alvo"], pedido.get("buscador", "bing"))
+        if acao == "abrir_videos":
+            import prospeccao
+            pasta = os.path.join(prospeccao.pasta_videos(), "Jarvis")
+            os.makedirs(pasta, exist_ok=True)
+            self._ui("nota", pasta)
+            _mostrar_arquivo(pasta)
+            return ("Abri a pasta dos vídeos, senhor. Todos ficam em MP4 no notebook, na pasta Vídeos, Jarvis: "
+                    "Prospecção, Sites e os baixados do YouTube.")
         if acao == "prospeccao":
             return self._prospeccao(pedido["busca"], pedido.get("quantidade", 5))
         if acao == "fabrica_sites":
