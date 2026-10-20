@@ -60,18 +60,22 @@
   $("#principal").onclick = () => pywebview.api.mostrar_principal();
   $("#fechar").onclick = () => pywebview.api.fechar_pip();
 
+  let numero = "";
   async function quadros() {
-    let espera = 250;
+    // o servidor responde vazio (204) quando não há imagem nova, então dá para perguntar rápido
+    let espera = 40;
     try {
-      const r = await fetch(`${info.quadro}?t=${Date.now()}`, { cache: "no-store" });
+      const r = await fetch(`${info.quadro}?n=${numero}&t=${Date.now()}`, { cache: "no-store" });
       if (!r.ok) throw new Error(r.status);
-      const nova = URL.createObjectURL(await r.blob()), antiga = $("#img").src;
-      $("#img").src = nova;
-      if (antiga.startsWith("blob:")) setTimeout(() => URL.revokeObjectURL(antiga), 1000);
+      numero = r.headers.get("X-Quadro") || "";
+      if (r.status === 200) {
+        const nova = URL.createObjectURL(await r.blob()), antiga = $("#img").src;
+        $("#img").src = nova;
+        if (antiga.startsWith("blob:")) setTimeout(() => URL.revokeObjectURL(antiga), 1000);
+      }
       const carregando = r.headers.get("X-Carregando") === "1";
       $("#aviso").textContent = "carregando…";
       $("#aviso").hidden = !carregando;
-      if (carregando) espera = 500;
     } catch (e) { espera = 1000; }
     setTimeout(quadros, espera);
   }

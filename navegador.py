@@ -39,13 +39,23 @@ _thread = None
 _estado = {"contexto": None, "pagina": None, "pw": None, "processo": None}
 _trava = threading.Lock()
 _trabalhando = threading.Event()   # a thread do Playwright está no meio de algo (abrindo página, clicando...)
-_ultimo_quadro = {"jpeg": None, "pedido": False}
+_carregando = threading.Event()    # uma página está sendo aberta (a interface mostra "carregando…")
+# "n" conta as imagens recebidas: a interface só baixa de novo quando chega uma imagem nova
+_ultimo_quadro = {"jpeg": None, "pedido": False, "n": 0}
+
+# Transmissão ao vivo: o próprio Edge manda uma imagem nova sempre que a página muda (Page.startScreencast),
+# em vez de a interface pedir fotos que entram na fila junto com os cliques.
+TRANSMISSAO = {"format": "jpeg", "quality": 60, "maxWidth": LARGURA, "maxHeight": ALTURA, "everyNthFrame": 1}
 
 
 # ---------- thread do Playwright ----------
 def _laco(fila):
     while True:
-        item = fila.get()
+        try:
+            item = fila.get(timeout=0.03)
+        except queue.Empty:
+            _bombear()  # sem pedidos: deixa o Edge entregar as imagens da transmissão
+            continue
         if item is None:  # esta thread foi aposentada
             return
         funcao, args, resposta = item
@@ -95,7 +105,8 @@ def _recomecar():
     """Aposenta a thread do Playwright (com o Edge dela) e cria outra, zerada."""
     with _trava:
         velha, processo = _fila, _estado["processo"]
-        _estado.update(contexto=None, pagina=None, pw=None, processo=None, cdp=None, cdp_pagina=None)
+        _estado.update(contexto=None, pagina=None, pw=None, processo=None, cdp=None, cdp_pagina=None,
+                       tx=None, tx_pagina=None)
         _novo_trabalhador()
     if velha is not None:
         velha.put(None)
@@ -217,7 +228,54 @@ def _pagina():
     if pagina.is_closed():
         abertas = [p for p in _estado["contexto"].pages if not p.is_closed()]
         pagina = _estado["pagina"] = abertas[-1] if abertas else _estado["contexto"].new_page()
+    _garantir_transmissao(pagina)
     return pagina
+
+
+# ---------- transmissão ao vivo ----------
+def _ao_quadro(sessao, parametros):
+    """Chegou uma imagem nova da transmissão: guarda e avisa o Edge que pode mandar a próxima."""
+    import base64
+    _ultimo_quadro["jpeg"] = base64.b64decode(parametros["data"])
+    _ultimo_quadro["n"] += 1
+    try:
+        sessao.send("Page.screencastFrameAck", {"sessionId": parametros["sessionId"]})
+    except Exception:
+        pass  # aba fechando: a próxima chamada de _pagina() liga a transmissão na aba nova
+
+
+def _garantir_transmissao(pagina):
+    """Liga a transmissão ao vivo na aba ativa (e desliga a da aba anterior)."""
+    if _estado.get("tx_pagina") is pagina:
+        return
+    velha = _estado.get("tx")
+    _estado.update(tx=None, tx_pagina=None)
+    if velha is not None:
+        try:
+            velha.detach()
+        except Exception:
+            pass
+    try:
+        sessao = pagina.context.new_cdp_session(pagina)
+        sessao.on("Page.screencastFrame", lambda parametros, s=sessao: _ao_quadro(s, parametros))
+        sessao.send("Page.startScreencast", TRANSMISSAO)
+        _estado.update(tx=sessao, tx_pagina=pagina)
+        log.info("Mini tela: transmissão ao vivo ligada")
+    except Exception:
+        # sem transmissão nesta aba: a mini tela volta a pedir fotos, como antes
+        _estado["tx_pagina"] = pagina
+        log.info("Mini tela: transmissão ao vivo indisponível nesta aba; usando fotos", exc_info=True)
+
+
+def _bombear():
+    """Quando a fila está parada, dá ao Edge alguns milissegundos para entregar as imagens da transmissão.
+    (O Playwright só recebe eventos enquanto está dentro de alguma chamada.)"""
+    if _estado["contexto"] is None:
+        return
+    try:
+        _pagina().wait_for_timeout(25)
+    except Exception:
+        time.sleep(0.05)
 
 
 def _desligar():
@@ -230,7 +288,8 @@ def _desligar():
         finally:
             if _estado["processo"] is not None:  # Edge aberto pelo caminho reserva
                 _estado["processo"].kill()
-            _estado.update(contexto=None, pagina=None, pw=None, processo=None, cdp=None, cdp_pagina=None)
+            _estado.update(contexto=None, pagina=None, pw=None, processo=None, cdp=None, cdp_pagina=None,
+                           tx=None, tx_pagina=None)
 
 
 # ---------- endereços ----------
@@ -256,12 +315,15 @@ def preparar():
 def abrir(texto=INICIO, buscador="bing"):
     def _abrir(url):
         pagina = _pagina()
+        _carregando.set()
         try:
             # "commit": volta assim que a página começa a chegar, para a mini tela já ir mostrando o carregamento
             pagina.goto(url, wait_until="commit", timeout=45000)
             pagina.wait_for_load_state("domcontentloaded", timeout=10000)
         except Exception as erro:  # página lenta (ou PC sem memória): mostra o que já carregou
             log.warning("Navegador: %s demorou para abrir (%s)", url, str(erro).splitlines()[0])
+        finally:
+            _carregando.clear()
         return pagina.url
     # ligar o Edge pode levar várias tentativas, e o PC pode estar lento: espera bastante
     return _rodar(_abrir, endereco(texto or INICIO, buscador), limite=180)
@@ -299,16 +361,27 @@ def rolar_pixels(dy):
     _rodar(lambda: _pagina().mouse.wheel(0, dy))
 
 
+def _navegando(funcao):
+    """Roda uma navegação marcando "carregando" para a interface."""
+    def envolvida():
+        _carregando.set()
+        try:
+            return funcao()
+        finally:
+            _carregando.clear()
+    return envolvida
+
+
 def voltar():
-    _rodar(lambda: _pagina().go_back(wait_until="domcontentloaded", timeout=15000))
+    _rodar(_navegando(lambda: _pagina().go_back(wait_until="domcontentloaded", timeout=15000)))
 
 
 def avancar():
-    _rodar(lambda: _pagina().go_forward(wait_until="domcontentloaded", timeout=15000))
+    _rodar(_navegando(lambda: _pagina().go_forward(wait_until="domcontentloaded", timeout=15000)))
 
 
 def recarregar():
-    _rodar(lambda: _pagina().reload(wait_until="domcontentloaded", timeout=30000))
+    _rodar(_navegando(lambda: _pagina().reload(wait_until="domcontentloaded", timeout=30000)))
 
 
 _ultimo_estado = {"url": "", "titulo": ""}
@@ -359,18 +432,26 @@ def quadro(qualidade=60):
     return quadro_ao_vivo(qualidade)[0]
 
 
+def numero_do_quadro():
+    """Quantas imagens a transmissão já entregou: a interface só baixa de novo quando esse número muda."""
+    return _ultimo_quadro["n"]
+
+
 def quadro_ao_vivo(qualidade=60):
-    """Devolve (jpeg, carregando). Se o navegador estiver ocupado (abrindo uma página pesada, por exemplo),
-    devolve a última imagem em vez de esperar: assim a mini tela nunca fica em branco nem pisca, e os pedidos
-    de imagem não se acumulam na fila atrasando os cliques."""
+    """Devolve (jpeg, carregando). Com a transmissão ao vivo ligada, só entrega a última imagem que o Edge
+    mandou, na hora e sem passar pela fila dos cliques. Sem ela, pede uma foto, mas, se o navegador estiver
+    ocupado, devolve a última imagem em vez de esperar: assim a mini tela nunca fica em branco nem pisca."""
     if not ligado():
         return None, False
+    if _estado.get("tx") is not None and _ultimo_quadro["jpeg"]:
+        return _ultimo_quadro["jpeg"], _carregando.is_set()
     if _trabalhando.is_set() or _ultimo_quadro["pedido"]:
         return _ultimo_quadro["jpeg"], True
     _ultimo_quadro["pedido"] = True
     try:
         jpeg = _rodar(lambda: _foto(_pagina(), "jpeg", qualidade), limite=8, recomecar=False)
         _ultimo_quadro["jpeg"] = jpeg
+        _ultimo_quadro["n"] += 1
         return jpeg, False
     except Exception:
         return _ultimo_quadro["jpeg"], True

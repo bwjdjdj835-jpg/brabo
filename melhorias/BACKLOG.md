@@ -15,6 +15,9 @@ Regra: tudo que publica, instala, clica na tela ou apaga pede confirmação ("Co
 - [ ] 9. Ideias da pesquisa "como fazer um Jarvis" (lembretes, timer, clima, rotina...)
 
 ## Feito
+- [x] Mini tela fluida (navegador.py, servidor.py, index.html, pip.html): transmissão ao vivo do Edge
+  (Page.startScreencast) no lugar de pedir fotos pela fila dos cliques. A interface pega a imagem em 0 ms e só
+  baixa quando há imagem nova (204 quando não há). Rolagem ~16 imagens/s; YouTube carregando ~3/s (limite do PC).
 - [x] Assistente renomeado para Braga (identidade.py): nome falado, título B.R.A.G.A., chamada "Braga" (e "Jarvis"
   continua valendo), ícone B, atalhos "Braga" e "Braga - Envios". Código e pastas continuam "Jarvis".
 - [x] Mini tela flutuante (interface/pip.html): janelinha 440x300 sempre por cima, arrastável, clicável;
@@ -67,6 +70,8 @@ Regra: tudo que publica, instala, clica na tela ou apaga pede confirmação ("Co
 - [x] Já existiam: bot do Telegram, comandos personalizados (meus_comandos.json), segredos no .env
 
 ## Ideias dos vídeos (o Claude lê daqui para atualizar o Jarvis)
+- [ ] ideias/2026-10-20-1046-https-youtu-be-vtiq4pur7o0-is-lhe3ogdgj7.md (https://youtu.be/vTIq4pUR7o0?is=lhE3OGDGJ7r80nnV)
+- [ ] ideias/2026-10-20-1044-https-youtube-com-playlist-list-pl39zyvn.md (https://youtube.com/playlist?list=PL39zyvnHdXh9M1Nk9XXmhKOzP0o9_9Eba&si=dJ6Be2LVVNNGCQfz)
 - [x] ideias/2026-10-19-0931-https-youtu-be-llqcqmerdkm-si-mo46wn-1ym.md (feito: ideias 2, 10 e 11; painel já existia) (https://youtu.be/lLQCqMErDkM?si=Mo46wn_1ymc-chkJ)
 - [x] ideias/2026-10-19-0900-https-youtu-be-llqcqmerdkm-si-4wjvnjrex6.md (feito: ideias 3 e 8; status do PC já existia) (https://youtu.be/lLQCqMErDkM?si=4wjVNJreX6RlzL8z)
 - [ ] ideias/2026-10-19-0857-https-youtu-be-llqcqmerdkm-si-4wjvnjrex6.md (https://youtu.be/lLQCqMErDkM?si=4wjVNJreX6RlzL8z)

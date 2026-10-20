@@ -38,17 +38,27 @@ class _Manipulador(http.server.SimpleHTTPRequestHandler):
 
     def _quadro_navegador(self):
         import navegador
+        consulta = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
         try:
             imagem, carregando = navegador.quadro_ao_vivo()
+            numero = navegador.numero_do_quadro()
         except Exception:
-            imagem, carregando = None, True
+            imagem, carregando, numero = None, True, 0
         if not imagem:
             self.send_error(503)
+            return
+        # a interface diz qual imagem já tem: se não chegou nenhuma nova, responde vazio (204) na hora
+        if consulta.get("n", [""])[0] == str(numero):
+            self.send_response(204)
+            self.send_header("X-Carregando", "1" if carregando else "0")
+            self.send_header("X-Quadro", str(numero))
+            self.end_headers()
             return
         self.send_response(200)
         self.send_header("Content-Type", "image/jpeg")
         self.send_header("Content-Length", str(len(imagem)))
         self.send_header("X-Carregando", "1" if carregando else "0")  # a interface mostra "carregando…"
+        self.send_header("X-Quadro", str(numero))
         self.end_headers()
         self.wfile.write(imagem)
 

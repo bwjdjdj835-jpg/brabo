@@ -918,14 +918,18 @@
         const aba = this.aba();
         if (!aba) { this.rodando = false; return; }
         if (abas.ativa !== aba.id) { setTimeout(proximo, 500); return; }
-        let espera = 120;
+        // pergunta rápido: o servidor responde vazio (204) quando não há imagem nova, então quase não pesa
+        let espera = 40;
         try {
-          const r = await fetch(`${this.info.quadro}?t=${Date.now()}`, { cache: "no-store" });
+          const r = await fetch(`${this.info.quadro}?n=${this.numero ?? ""}&t=${Date.now()}`, { cache: "no-store" });
           if (!r.ok) throw new Error(r.status);
-          const imagem = URL.createObjectURL(await r.blob());
-          const antiga = this.img.src;
-          this.img.src = imagem;
-          if (antiga.startsWith("blob:")) setTimeout(() => URL.revokeObjectURL(antiga), 1000);
+          this.numero = r.headers.get("X-Quadro");
+          if (r.status === 200) {
+            const imagem = URL.createObjectURL(await r.blob());
+            const antiga = this.img.src;
+            this.img.src = imagem;
+            if (antiga.startsWith("blob:")) setTimeout(() => URL.revokeObjectURL(antiga), 1000);
+          }
           const carregando = r.headers.get("X-Carregando") === "1";
           let a = aviso();
           if (carregando && !a) {
@@ -934,7 +938,6 @@
             this.el.querySelector(".mini-area").append(a);
           }
           if (a) { a.textContent = "carregando…"; a.hidden = !carregando; }
-          if (carregando) espera = 400;
         } catch (e) {
           espera = 800;  // navegador ainda ligando: mantém a última imagem e tenta de novo
         }
