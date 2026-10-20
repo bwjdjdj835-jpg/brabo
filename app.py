@@ -225,6 +225,70 @@ class Jarvis:
         self._pendente = apagar
         return f"Vou apagar o comando {comando['frases'][0]}. Confirma?"
 
+    # ---------- skills: habilidades novas a partir de um link do GitHub (só texto, com o "sim") ----------
+    def skills_listar(self):
+        import skills
+        return [{k: s[k] for k in ("nome", "titulo", "descricao", "origem")} for s in skills.listar()]
+
+    def _skill_instalar(self, link):
+        if not link:
+            return ("Cole o link do repositório do GitHub, senhor. Por exemplo: instala a skill "
+                    "github.com/anthropics/skills/tree/main/skills/pdf")
+
+        def trabalho():
+            import skills
+            self._ui("tarefa", "Procurando a skill", link)
+            try:
+                achadas = skills.procurar(link)
+            except Exception as erro:
+                log.warning("Skill: falha ao ler %s", link, exc_info=True)
+                achadas, motivo = [], str(erro)[:150]
+            else:
+                motivo = "não achei SKILL.md nem README nesse repositório"
+            self._ui("tarefa", None, None)
+            with self._trava:
+                if not achadas:
+                    self._falar(f"Não consegui pegar a skill, senhor: {motivo}.")
+                    self._estado_parado()
+                    return
+
+                def instalar():
+                    nomes = [skills.instalar(s) for s in achadas]
+                    self._ui("skills", self.skills_listar())
+                    return (f"Skill {nomes[0]} instalada, senhor. Quando o pedido combinar com ela, eu uso."
+                            if len(nomes) == 1 else f"Instalei {len(nomes)} skills, senhor: {', '.join(nomes[:6])}.")
+
+                self._pendente = instalar
+                for s in achadas:
+                    self._ui("nota", f"Skill {s['nome']}: {s['descricao'][:200]} ({len(s['arquivos'])} arquivos de texto)")
+                if len(achadas) == 1:
+                    fala = (f"Achei a skill {achadas[0]['nome']}. {achadas[0]['descricao'][:180]} "
+                            "Ela é só texto de instruções; não roda nada do repositório. Instalo? Confirma?")
+                else:
+                    fala = (f"Achei {len(achadas)} skills nesse repositório: "
+                            f"{', '.join(s['nome'] for s in achadas[:6])}. São só textos de instruções. "
+                            "Instalo todas? Confirma?")
+                self._falar(fala)
+                self._estado_parado()
+
+        threading.Thread(target=trabalho, daemon=True).start()
+        return "Vou ler o repositório e ver que skill ele tem, senhor."
+
+    def _skill_apagar(self, nome):
+        import skills
+        achadas = skills.buscar(nome)
+        if not achadas:
+            return "Não achei essa skill, senhor. Diga: quais são minhas skills."
+        skill = achadas[0]
+
+        def apagar():
+            skills.remover(skill["nome"])
+            self._ui("skills", self.skills_listar())
+            return "Skill apagada, senhor."
+
+        self._pendente = apagar
+        return f"Vou apagar a skill {skill['nome']}. Confirma?"
+
     # ---------- mini tela: navegador do Jarvis dentro da interface ----------
     def contexto_interface(self, aba, url=""):
         """A interface avisa qual aba está na frente e o site da mini tela."""
@@ -1038,6 +1102,17 @@ class Jarvis:
             return self._criar_comando(pedido["prompt"])
         if acao == "comando_apagar":
             return self._apagar_comando(pedido["nome"])
+        if acao == "skill_instalar":
+            return self._skill_instalar(pedido["link"])
+        if acao == "skill_apagar":
+            return self._skill_apagar(pedido["nome"])
+        if acao == "skill_listar":
+            minhas = self.skills_listar()
+            self._ui("skills", minhas)
+            if not minhas:
+                return ("O senhor ainda não tem skills. Cole o link de um repositório do GitHub no painel Skills, ou "
+                        "diga: instala a skill, e o link.")
+            return f"O senhor tem {len(minhas)} skills: {', '.join(s['nome'] for s in minhas[:8])}."
         if acao == "comando_listar":
             import comandos_usuario
             meus = comandos_usuario.listar()

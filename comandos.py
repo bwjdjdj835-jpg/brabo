@@ -476,6 +476,19 @@ def executar(comando, mini_tela=False, url_mini=""):
     if tem("meus comandos", "seus comandos", "comandos personalizados", "minha linguagem") and not tem(r"abr\w*"):
         return {"acao": "comando_listar"}
 
+    # ----- skills: habilidades novas a partir de um link do GitHub -----
+    if tem("skill", "skills", "habilidade", "habilidades"):
+        link = re.search(r"(?:https?://)?(?:www\.)?github\.com/[^\s<>\"']+", comando)
+        if link or tem(r"instal\w*", r"adicion\w*", r"coloc\w*", "bota", "poe"):
+            if not tem(r"apag\w*", r"remov\w*", r"exclu\w*", r"desinstal\w*"):
+                endereco = link.group() if link else ""
+                return {"acao": "skill_instalar",
+                        "link": endereco if not endereco or endereco.startswith("http") else "https://" + endereco}
+        if tem(r"apag\w*", r"remov\w*", r"exclu\w*", r"desinstal\w*"):
+            return {"acao": "skill_apagar", "nome": re.sub(r"^.*?\b(?:skill|habilidade)\b\s*", "", t).strip()}
+        if tem("quais", "lista", "minhas", "mostra"):
+            return {"acao": "skill_listar"}
+
     # ----- comandos criados por você (meus_comandos.json): têm prioridade sobre os padrões -----
     import comandos_usuario
     resposta_usuario = comandos_usuario.tentar(t, original)

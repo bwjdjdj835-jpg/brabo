@@ -250,6 +250,14 @@ def _com_memoria(pedido):
     referencias = biblioteca.contexto()
     if referencias:
         partes.append(f"<biblioteca_do_usuario>\n{referencias}\n</biblioteca_do_usuario>")
+    try:
+        import skills
+        habilidades = skills.contexto(pedido)
+    except Exception:
+        log.warning("Skills: não consegui montar o contexto", exc_info=True)
+        habilidades = ""
+    if habilidades:
+        partes.append(habilidades)
     if not partes:
         return pedido
     return "\n\n".join(partes) + f"\n\nPedido atual do usuário: {pedido}"
