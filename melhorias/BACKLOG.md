@@ -15,6 +15,11 @@ Regra: tudo que publica, instala, clica na tela ou apaga pede confirmação ("Co
 - [ ] 9. Ideias da pesquisa "como fazer um Jarvis" (lembretes, timer, clima, rotina...)
 
 ## Feito
+- [x] Código /700 (ou "barra 700 pet shop"): fábrica de sites em Cacoal (padrão) com "R$ 100" na mensagem -> login do
+  GitHub na mini tela (github.com/login/device, código já copiado) -> publicar com o "sim" -> WhatsApp Web aberto.
+  Envio um por vez com o "sim" ("manda a mensagem pro próximo"). Vigia de respostas: com o WhatsApp aberto na mini
+  tela, avisa quando um cliente que recebeu a mensagem responde, para o senhor assumir. Não responde sozinho.
+  A conferir: login real do GitHub e o aviso de resposta (seletores do WhatsApp Web).
 - [x] Mini tela fluida (navegador.py, servidor.py, index.html, pip.html): transmissão ao vivo do Edge
   (Page.startScreencast) no lugar de pedir fotos pela fila dos cliques. A interface pega a imagem em 0 ms e só
   baixa quando há imagem nova (204 quando não há). Rolagem ~16 imagens/s; YouTube carregando ~3/s (limite do PC).
