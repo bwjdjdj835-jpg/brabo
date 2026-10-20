@@ -41,12 +41,24 @@ DICAS_NOTEBOOK = (
     "tela de configurações, o caminho mais certo é: acao 'tecla' com 'win', depois 'digitar' o nome (ex.: "
     "'WhatsApp', 'Bloco de Notas', 'Configurações de som') e 'tecla' 'enter'. Espere ('esperar') o programa "
     "abrir antes de clicar nele. Se chegar uma CORREÇÃO DO USUÁRIO, siga a correção.\n"
-    "EXCEÇÃO AO BLOQUEIO, só no mini notebook: quando a tarefa pede para ENVIAR uma mensagem, PUBLICAR ou EXCLUIR "
+)
+
+DICAS_CONFIRMAR = (
+    "\nEXCEÇÃO AO BLOQUEIO, só no mini notebook: quando a tarefa pede para ENVIAR uma mensagem, PUBLICAR ou EXCLUIR "
     "algo, deixe tudo pronto (texto escrito, destinatário certo) e, em vez de clicar no botão, responda com acao "
     "'confirmar', o x e o y do botão e, na 'fala', exatamente o que vai acontecer (ex.: \"Vou clicar em Enviar e "
     "mandar 'Bom dia' para Você (seu próprio número)\"). O Braga pergunta ao usuário e só clica se ele disser sim. "
     "Comprar, pagar, transferir dinheiro e digitar senhas, cartões ou documentos continuam proibidos: nesses, "
     "conclua dizendo que o usuário precisa terminar."
+)
+
+DICAS_VIRTUAL = (
+    "\nVocê está no MINI NOTEBOOK VIRTUAL do Braga: um navegador separado, que só aparece dentro do Braga. Nada "
+    "abre no computador de verdade do usuário. Programas do Windows não existem aqui: use a versão web (WhatsApp: "
+    "https://web.whatsapp.com, e-mail: https://mail.google.com, mapas: https://www.google.com/maps, documentos: "
+    "https://docs.google.com). Se pedirem um programa que não tem versão web (Bloco de Notas, Configurações do "
+    "Windows), conclua explicando que no notebook virtual não dá e que o senhor pode pedir 'no PC real, ...'. "
+    "Se chegar uma CORREÇÃO DO USUÁRIO, siga a correção."
 )
 
 INSTRUCOES_NAVEGADOR = INSTRUCOES.replace(
@@ -87,7 +99,10 @@ def executar_tarefa(tarefa, ao_evento=None, alvo=None):
     alvo = alvo or tela
     navegador = hasattr(alvo, "abrir")
     sessao = getattr(alvo, "sessao", None)  # mini notebook: o senhor pode pausar, parar e corrigir no meio
-    instrucoes = INSTRUCOES_NAVEGADOR if navegador else INSTRUCOES + DICAS_NOTEBOOK if sessao else INSTRUCOES
+    if navegador:
+        instrucoes = INSTRUCOES_NAVEGADOR + (DICAS_VIRTUAL + DICAS_CONFIRMAR if sessao else "")
+    else:
+        instrucoes = INSTRUCOES + DICAS_NOTEBOOK + DICAS_CONFIRMAR if sessao else INSTRUCOES
     max_passos = MAX_PASSOS_NAVEGADOR if navegador else MAX_PASSOS_NOTEBOOK if sessao else MAX_PASSOS
     alvo.preparar()
     historico = []

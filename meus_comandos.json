@@ -252,6 +252,30 @@
         "texto": "Qual ramo, senhor? Por exemplo: /700 pet shop. A cidade padrão é Cacoal; para outra, diga: /700 pet shop em Ji-Paraná."
       },
       "descricao": "Explica como usar o código /700."
+    },
+    {
+      "nome": "C/19708090 · prospecção no notebook",
+      "frases": [
+        "c/19708090 {busca}"
+      ],
+      "acao": {
+        "tipo": "comandos",
+        "lista": [
+          "prospecção no notebook de {busca}"
+        ]
+      },
+      "descricao": "Tudo no mini notebook 3D: procura no Google Maps, confere na internet se o comércio não tem site, faz um skin novo do ramo, tira os prints, copia as fotos, gera o site e o zip, abre o WhatsApp Web (espera o QR Code se precisar) e pergunta um por um se pode mandar a mensagem."
+    },
+    {
+      "nome": "C/19708090 · ajuda",
+      "frases": [
+        "c/19708090"
+      ],
+      "acao": {
+        "tipo": "responder",
+        "texto": "Qual tipo de comércio e cidade, senhor? Por exemplo: C/19708090 pet shop em Cacoal."
+      },
+      "descricao": "Explica como usar o código C/19708090."
     }
   ]
 }

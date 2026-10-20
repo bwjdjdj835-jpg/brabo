@@ -425,10 +425,23 @@ class AlvoNotebook:
         self.controle.rolar(cliques)
 
 
+class AlvoVirtual:
+    """O notebook VIRTUAL: o agente age no navegador do Braga (o Edge invisível), então nada abre no PC de verdade.
+    Tem as mesmas funções do navegador.py, mais a sessão do notebook (pausar, parar, corrigir, confirmar)."""
+
+    def __init__(self, sessao):
+        self.sessao = sessao
+
+    def __getattr__(self, nome):
+        import navegador
+        return getattr(navegador, nome)
+
+
 captura = CapturaTela()
 controle = ControleReal(captura)
 sessao = Sessao()
 alvo = AlvoNotebook(captura, controle, sessao)
+alvo_virtual = AlvoVirtual(sessao)
 
 
 def info():

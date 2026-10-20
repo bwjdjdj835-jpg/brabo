@@ -183,6 +183,67 @@ def verificar_dominios(nome, cidade=""):
     return resultado
 
 
+# ---------- 3b. confirmar na web que não tem site (código C/19708090) ----------
+# sites que aparecem na busca mas não são "o site do comércio": guias, redes, marketplaces, mapas, cadastros
+NAO_E_SITE_PROPRIO = REDES + (
+    "google.", "bing.", "microsoft.", "maps.", "ifood.", "rappi.", "aiqfome.", "apontador.", "guiamais.", "telelistas.",
+    "cylex", "solutudo.", "encontra", "yelp.", "tripadvisor.", "foursquare.", "waze.", "youtube.", "kwai.", "threads.",
+    "cnpj", "econodata.", "casadosdados.", "empresaqui.", "consultas", "jusbrasil.", "reclameaqui.", "olx.",
+    "mercadolivre.", "shopee.", "doctoralia.", "booksy.", "trinks.", "petlove.", "gov.br", "wikipedia.", "x.com",
+    "twitter.com", "linkedin.com", "pinterest.", "glassdoor.", "indeed.", "infojobs.", "vagas.", "listamais.",
+)
+_JS_LINKS_BING = r"""() => [...document.querySelectorAll('#b_results li.b_algo h2 a, #b_results li.b_algo .b_attribution cite')]
+  .map(a => a.href || a.textContent).filter(Boolean).slice(0, 15)"""
+
+
+def _links_da_busca(texto):
+    navegador.abrir(texto, "bing")
+    return navegador._rodar(lambda: navegador._pagina().evaluate(_JS_LINKS_BING), limite=30) or []
+
+
+def _site_proprio(links, marca):
+    """O primeiro link que parece ser o site do próprio comércio (o domínio tem a marca)."""
+    for link in links:
+        dominio = urllib.parse.urlsplit(link if "://" in link else "https://" + link.split(" ")[0]).netloc.lower()
+        if not dominio or any(n in dominio for n in NAO_E_SITE_PROPRIO):
+            continue
+        if marca and len(marca) >= 4 and marca[:12] in dominio.replace("-", "").replace(".", ""):
+            return dominio
+    return None
+
+
+def confirmar_sem_site(negocio, cidade, avisar):
+    """Pesquisa no navegador (Bing) pelo nome e pelo telefone e confere os domínios parecidos. Devolve
+    (True, motivo) se realmente não tem site, ou (False, "tem site: dominio")."""
+    nome = negocio["nome"]
+    marca = _marca(nome, cidade)
+    buscas = [f'"{nome}" {cidade}'.strip()]
+    telefone = re.sub(r"\D", "", negocio.get("telefone") or "")
+    if len(telefone) >= 8:
+        buscas.append(f'"{negocio["telefone"]}"')
+    for busca in buscas:
+        avisar(f"conferindo na web se {nome[:30]} tem site · {busca[:40]}")
+        try:
+            achado = _site_proprio(_links_da_busca(busca), marca)
+        except Exception:
+            log.warning("Fábrica de sites: busca de confirmação falhou (%s)", busca, exc_info=True)
+            continue
+        if achado:
+            return False, f"tem site: {achado}"
+    # domínio da marca registrado E respondendo com o nome do comércio = tem site, mesmo sem aparecer na busca
+    for dominio in (f"{marca}.com.br", f"{marca}.com"):
+        try:
+            pedido = urllib.request.Request(f"https://{dominio}", headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(pedido, timeout=8) as resposta:
+                pagina = resposta.read(200_000).decode("utf-8", "replace").lower()
+        except (urllib.error.URLError, OSError, ValueError):
+            continue
+        palavras = [p for p in _slug(nome).split("-") if len(p) > 3 and p not in GENERICAS]
+        if palavras and sum(p in pagina for p in palavras) >= max(1, len(palavras) // 2):
+            return False, f"tem site: {dominio}"
+    return True, "nenhum site próprio na busca pelo nome e pelo telefone"
+
+
 # ---------- 4. modelos de design ----------
 MODELOS = {
     "noturno": {"descricao": "escuro e elegante, com destaque em neon", "fundo": "#0b0f17", "texto": "#f1f5f9",
@@ -207,6 +268,43 @@ RAMOS_DOS_MODELOS = {
 }
 
 
+# skins novos por ramo (código C/19708090): paleta + par de fontes do Google Fonts + formas, variando por comércio
+PALETAS_POR_RAMO = {
+    ("pet", "veterin", "banho", "tosa"): [("#fff8f0", "#2b2118", "#ff8a3d", "#2fb7a3"), ("#f4fbff", "#13293d", "#3a86ff", "#ffbe0b"),
+                                          ("#fdf6ff", "#2d1b3d", "#9b5de5", "#f15bb5")],
+    ("barbe", "barber", "tattoo", "tatu"): [("#0e0e10", "#f2efe9", "#c8a165", "#8b1e1e"), ("#111827", "#f9fafb", "#e11d48", "#fbbf24")],
+    ("salao", "beleza", "estetica", "manicure", "spa"): [("#fff7f8", "#3a2730", "#d4789a", "#c9a96e"), ("#faf5ff", "#2e1065", "#a855f7", "#f9a8d4")],
+    ("restaur", "pizza", "lanch", "hamburg", "acai", "sorvet", "doce", "padaria", "cafe"): [
+        ("#fffaf0", "#2a1a0e", "#e63946", "#f4a261"), ("#101418", "#fdf6e3", "#ff7b00", "#ffd166")],
+    ("clinica", "odonto", "dentista", "fisio", "psicolog", "medic", "farmacia", "nutri", "laborat"): [
+        ("#f6fbff", "#0b2540", "#0ea5e9", "#10b981"), ("#ffffff", "#1e293b", "#2563eb", "#14b8a6")],
+    ("academia", "fitness", "crossfit", "oficina", "auto", "moto", "pneu"): [("#0b0b0f", "#f5f5f5", "#a3e635", "#22d3ee"),
+                                                                           ("#111111", "#fafafa", "#f97316", "#facc15")],
+}
+FONTES = [("Poppins", "Inter"), ("Playfair Display", "Lato"), ("Montserrat", "Open Sans"), ("Nunito", "Nunito Sans"),
+          ("Bebas Neue", "Roboto"), ("Fredoka", "Quicksand"), ("DM Serif Display", "DM Sans"), ("Outfit", "Manrope")]
+FORMAS = ["cantos bem arredondados e ícones fofos", "linhas retas e elegantes, muito espaço em branco",
+          "ondas e curvas orgânicas nas divisórias", "cartões com sombra suave e destaques em gradiente",
+          "visual de revista, fotos grandes e títulos enormes"]
+
+
+def skin_novo(ramo, semente):
+    """Um skin profissional próprio para o ramo, diferente de comércio para comércio (semente = nome)."""
+    sorteio = hashlib.sha256(semente.encode("utf-8")).digest()  # um byte para cada escolha
+    texto = _slug(ramo)
+    paletas = next((p for chaves, p in PALETAS_POR_RAMO.items() if any(c in texto for c in chaves)),
+                   [("#f8fafc", "#0f172a", "#6366f1", "#f59e0b"), ("#0f172a", "#e2e8f0", "#38bdf8", "#f472b6")])
+    fundo, cor_texto, destaque, apoio = paletas[sorteio[0] % len(paletas)]
+    titulo, corpo = FONTES[sorteio[1] % len(FONTES)]
+    forma = FORMAS[sorteio[2] % len(FORMAS)]
+    return {"fundo": fundo, "texto": cor_texto, "destaque": destaque, "apoio": apoio, "fonte_titulo": titulo,
+            "fonte_texto": corpo, "forma": forma,
+            "descricao": (f"SKIN NOVO e exclusivo para {ramo}: fundo {fundo}, texto {cor_texto}, destaque {destaque}, "
+                          f"cor de apoio {apoio}; títulos em {titulo} e textos em {corpo} (Google Fonts); {forma}. "
+                          "Crie elementos visuais que lembrem o ramo (ícones, ilustrações em SVG, detalhes) e não "
+                          "copie o visual de outros sites")}
+
+
 def escolher_modelo(ramo):
     texto = _slug(ramo)
     for modelo, palavras in RAMOS_DOS_MODELOS.items():
@@ -216,9 +314,18 @@ def escolher_modelo(ramo):
 
 
 # ---------- 5. o site ----------
-def construir_site(negocio, busca, pasta_site, modelo):
+def construir_site(negocio, busca, pasta_site, modelo, skin=None):
     e = html.escape
-    m = MODELOS[modelo]
+    m = dict(MODELOS[modelo])
+    fontes_google = ""
+    if skin:  # o skin novo do ramo manda nas cores e nas fontes
+        escuro = sum(int(skin["fundo"][i:i + 2], 16) for i in (1, 3, 5)) < 384
+        m.update(fundo=skin["fundo"], texto=skin["texto"], destaque=skin["destaque"],
+                 cartao="rgba(255,255,255,.06)" if escuro else "#ffffff",
+                 fonte=f"'{skin['fonte_texto']}', 'Segoe UI', sans-serif", titulo=f"'{skin['fonte_titulo']}', 'Segoe UI', sans-serif")
+        familias = "&".join("family=" + urllib.parse.quote_plus(f) + ":wght@400;700;800"
+                            for f in {skin["fonte_titulo"], skin["fonte_texto"]})
+        fontes_google = f'<link rel="stylesheet" href="https://fonts.googleapis.com/css2?{familias}&display=swap">'
     nome = negocio["nome"]
     ramo = negocio.get("categoria") or busca
     achado = re.search(r",\s*([^,]+?)\s*-\s*[A-Z]{2}\b", negocio.get("endereco") or "")
@@ -238,6 +345,7 @@ def construir_site(negocio, busca, pasta_site, modelo):
 <title>{e(nome)}{(' · ' + e(cidade)) if cidade else ''}</title>
 <meta name="description" content="{e(nome)}: {e(ramo)}{(' em ' + e(cidade)) if cidade else ''}. Fale pelo WhatsApp.">
 <meta property="og:title" content="{e(nome)}"><meta property="og:description" content="{e(ramo)}{(' em ' + e(cidade)) if cidade else ''}">
+{fontes_google}
 <style>
   :root {{ --fundo: {m['fundo']}; --texto: {m['texto']}; --cartao: {m['cartao']}; --destaque: {m['destaque']}; }}
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
@@ -374,7 +482,7 @@ def _defeito_grave(problemas):
     return any(p.startswith(GRAVES) for p in problemas or [])
 
 
-def site_pelo_claude(item, busca, pasta_site, modelo, avisar, tentativas=3):
+def site_pelo_claude(item, busca, pasta_site, modelo, avisar, tentativas=3, skin=None):
     """O Claude Code constrói o site completo; a checagem reprova e manda corrigir, até `tentativas` voltas.
     Devolve (caminho do index.html, problemas que sobraram) ou (None, motivo) se o Claude não puder."""
     import claude_code
@@ -389,7 +497,8 @@ def site_pelo_claude(item, busca, pasta_site, modelo, avisar, tentativas=3):
         "whatsapp": f"https://wa.me/{zap}" if zap else "", "nota_google": item.get("nota", ""),
         "avaliacoes_google": item.get("avaliacoes", ""), "link_maps": item.get("link_maps", ""),
         "fotos": [f"fotos/{f}" for f in fotos],
-        "estilo_de_design": f"{modelo}: {MODELOS[modelo]['descricao']} (cor de destaque {MODELOS[modelo]['destaque']})",
+        "estilo_de_design": skin["descricao"] if skin else
+        f"{modelo}: {MODELOS[modelo]['descricao']} (cor de destaque {MODELOS[modelo]['destaque']})",
     }
     os.makedirs(pasta_site, exist_ok=True)
     with open(os.path.join(pasta_site, "dados.json"), "w", encoding="utf-8") as arquivo:
@@ -598,19 +707,34 @@ def ultima_execucao():
 
 
 # ---------- tudo junto ----------
-def executar(busca, quantidade=PADRAO, ao_evento=None, gravar=True, com_claude=True, preco=None):
+def executar(busca, quantidade=PADRAO, ao_evento=None, gravar=True, com_claude=True, preco=None,
+             confirmar_web=False, skins=False):
     """Do Google Maps até a página de entregas (sem publicar). Devolve o resumo da execução.
     com_claude: o site completo é feito pelo Claude (minutos por site); False usa só o modelo pronto (segundos).
-    preco: valor do site (R$) que entra na mensagem de cada cliente (código /700)."""
+    preco: valor do site (R$) que entra na mensagem de cada cliente (código /700).
+    confirmar_web: antes de fazer o site, pesquisa nome e telefone na web para confirmar que não tem site.
+    skins: cada comércio ganha um skin novo do ramo (cores, fontes e formas próprias) em vez do modelo fixo."""
     avisar = ao_evento or (lambda t: None)
     quantidade = max(1, min(quantidade, MAXIMO))
     agora = datetime.datetime.now()
     pasta = os.path.join(SAIDA, f"{agora:%Y-%m-%d-%H%M}-{_slug(busca)}")
     os.makedirs(pasta, exist_ok=True)
-    negocios = buscar_sem_site(busca, quantidade, avisar)
+    negocios = buscar_sem_site(busca, quantidade * 2 if confirmar_web else quantidade, avisar)
+    descartados = []
+    if confirmar_web:
+        cidade = (re.search(r"\bem\s+(.+)$", busca, re.I) or [None, ""])[1]
+        confirmados = []
+        for negocio in negocios:
+            if len(confirmados) >= quantidade:
+                break
+            sem, motivo = confirmar_sem_site(negocio, cidade, avisar)
+            log.info("Fábrica de sites: %s -> %s", negocio["nome"], motivo)
+            (confirmados if sem else descartados).append(negocio if sem else {"nome": negocio["nome"], "motivo": motivo})
+        negocios = confirmados
     if not negocios:
         raise ValueError(f"Não achei negócios sem site para '{busca}'. Tente outro ramo ou cidade.")
-    execucao = {"busca": busca, "quando": f"{agora:%d/%m/%Y %H:%M}", "pasta": pasta, "itens": [], "preco": preco}
+    execucao = {"busca": busca, "quando": f"{agora:%d/%m/%Y %H:%M}", "pasta": pasta, "itens": [], "preco": preco,
+                "descartados": descartados}
     pasta_videos = os.path.join(VIDEOS, os.path.basename(pasta))
     for n, negocio in enumerate(negocios, 1):
         nome = negocio["nome"]
@@ -634,10 +758,14 @@ def executar(busca, quantidade=PADRAO, ao_evento=None, gravar=True, com_claude=T
         achado = re.search(r",\s*([^,]+?)\s*-\s*[A-Z]{2}\b", negocio.get("endereco") or "")
         item["dominios"] = verificar_dominios(nome, achado.group(1) if achado else "")
         item["modelo"] = escolher_modelo(f"{negocio.get('categoria', '')} {busca}")
+        skin = skin_novo(f"{negocio.get('categoria') or ''} {busca}".strip(), nome) if skins else None
+        if skin:
+            item["skin"] = skin
         item["site"], item["problemas"], item["feito_por"] = None, [], "modelo"
         if com_claude:
             try:
-                item["site"], item["problemas"] = site_pelo_claude(item, busca, pasta_site, item["modelo"], avisar)
+                item["site"], item["problemas"] = site_pelo_claude(item, busca, pasta_site, item["modelo"], avisar,
+                                                                   skin=skin)
                 item["feito_por"] = "Claude" if item["site"] else "modelo"
             except Exception:
                 log.exception("Fábrica de sites: o Claude falhou no site de %s", nome)
@@ -656,7 +784,7 @@ def executar(busca, quantidade=PADRAO, ao_evento=None, gravar=True, com_claude=T
                     item["site"] = None
         if not item["site"]:  # sem nenhuma IA: o modelo pronto garante que sempre sai um site
             avisar(f"{n}/{len(negocios)} · montando o site pelo modelo {item['modelo']} · {nome[:40]}")
-            item["site"] = construir_site(negocio, busca, pasta_site, item["modelo"])
+            item["site"] = construir_site(negocio, busca, pasta_site, item["modelo"], skin)
             item["problemas"] = []
         try:
             item["print_site"] = print_do_site(item["site"], os.path.join(pasta_negocio, "prints", "site.png"))

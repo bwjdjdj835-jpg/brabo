@@ -551,6 +551,11 @@ def executar(comando, mini_tela=False, url_mini=""):
             and not tem(r"baix\w*", r"resum\w*", r"relatori\w*", "toca", "youtube")):
         return {"acao": "abrir_videos"}
 
+    # ----- código C/19708090: prospecção inteira no notebook 3D (Maps, confirmação na web, skin novo, WhatsApp) -----
+    no_nb = re.match(r"^prospec\w*\s+no\s+(?:mini\s+)?notebook\s+(?:de\s+|para\s+|pra\s+)?(.+)", t)
+    if no_nb:
+        return {"acao": "prospeccao_notebook", "busca": _com_acentos(no_nb.group(1), t, original)}
+
     # ----- código /700: fábrica de sites + preço de R$ 100 + GitHub + WhatsApp (envio um por vez, com o "sim") -----
     venda = re.match(r"^(?:/|barra\s+)?700\s+(.+)|^venda\s+completa\s+(?:de\s+|para\s+|pra\s+)?(.+)", t)
     if venda:
@@ -617,16 +622,20 @@ def executar(comando, mini_tela=False, url_mini=""):
     correcao = re.match(r"^(?:corrig\w*|correcao)\s+(?:no\s+)?(?:mini\s+)?notebook[,:\s]+(.+)", t)
     if correcao:
         return {"acao": "notebook_controle", "tipo": "corrigir", "texto": _com_acentos(correcao.group(1), t, original)}
-    no_notebook = re.match(r"^(?:no|na|pelo|usa\w*\s+o|controla\w*\s+o)\s+(?:mini\s+)?notebook[,:\s]+(?:e\s+)?(.+)", t)
+    # "no PC real, ..." usa o mouse e o teclado de verdade; "no notebook, ..." fica no notebook VIRTUAL (nada abre no PC)
+    no_pc = re.match(r"^(?:no|na|pelo)\s+(?:meu\s+)?(?:pc|computador|notebook)\s+(?:real|de verdade)[,:\s]+(?:e\s+)?(.+)", t)
+    if no_pc:
+        return {"acao": "modo_tela", "tarefa": _com_acentos(no_pc.group(1), t, original), "virtual": False}
+    no_notebook = re.match(r"^(?:no|na|pelo|usa\w*\s+o|controla\w*\s+o)\s+(?:mini\s+)?notebook(?:\s+virtual)?[,:\s]+(?:e\s+)?(.+)", t)
     if no_notebook:
-        return {"acao": "modo_tela", "tarefa": _com_acentos(no_notebook.group(1), t, original)}
+        return {"acao": "modo_tela", "tarefa": _com_acentos(no_notebook.group(1), t, original), "virtual": True}
 
     gatilho_tela = re.search(
         r"\b(ve|vê|veja|olha|olhe|controla|controle|assume|assuma|usa|use)\s+(a\s+|na\s+|minha\s+)?tela\b"
         r"|\bmodo\s+tela\b|\bna\s+tela\b|\bclica\w*\b|\bclique\b|faz voce mesmo|faca voce mesmo", t)
     if gatilho_tela:
         tarefa = re.sub(r"^(jarvis[,\s]+)?(ve|vê|veja|olha|olhe|controla|controle|assume|usa|use|no|em)\s+(a\s+|na\s+|minha\s+|modo\s+)?tela[,:\s]*(e\s+)?", "", original, flags=re.I).strip()
-        return {"acao": "modo_tela", "tarefa": tarefa or original}
+        return {"acao": "modo_tela", "tarefa": tarefa or original, "virtual": False}  # "usa a tela": o PC real
 
     # ----- PDF: juntar arquivos em um PDF (antes de "criar app", senão "gera o pdf do projeto" viraria app) -----
     if (len(t.split()) <= 15 and "http" not in t and tem("pdf", "pdfs", "pedefe", "pe de efe")

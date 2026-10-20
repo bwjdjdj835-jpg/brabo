@@ -567,11 +567,13 @@ class Jarvis:
         _mostrar_arquivo(pasta)
         return atalho
 
-    def _fabrica_sites(self, busca, quantidade=3, preco=None, completo=False):
+    def _fabrica_sites(self, busca, quantidade=3, preco=None, completo=False, no_notebook=False):
         """Código B/07070707: negócios sem site no Maps -> print -> domínio -> modelo -> site -> zip -> vídeo ->
         mensagem. No fim pergunta se pode publicar no GitHub Pages (público: só com o "sim" do senhor).
         completo (código /700): o preço entra na mensagem e, depois dos sites, vem o login do GitHub na mini tela,
-        a publicação (com o "sim") e o WhatsApp pronto (envio um por vez, com o "sim")."""
+        a publicação (com o "sim") e o WhatsApp pronto (envio um por vez, com o "sim").
+        no_notebook (código C/19708090): tudo aparece no notebook 3D (navegador do Braga), confirma na web que não
+        tem site, cada comércio ganha um skin novo do ramo e, no fim, o WhatsApp Web pergunta um por um."""
         if not busca:
             return "Qual ramo e cidade, senhor? Por exemplo: fábrica de sites de barbearias em Cacoal."
         if getattr(self, "_fabricando", False):
@@ -582,12 +584,17 @@ class Jarvis:
             import fabrica_sites
             import navegador
             self._ui("tarefa", "Fábrica de sites", busca)
-            pasta = None
+            pasta = r = None
             try:
                 navegador.preparar()
-                self._aba_ativa = "navegador"
-                self._ui("abrirNavegador")
-                r = fabrica_sites.executar(busca, quantidade, lambda t: self._ui("atividade", t), preco=preco)
+                if no_notebook:
+                    self.mostrar_principal()
+                    self._ui("abrirNotebook", "navegador")  # a tela do notebook 3D mostra o navegador do Braga
+                else:
+                    self._aba_ativa = "navegador"
+                    self._ui("abrirNavegador")
+                r = fabrica_sites.executar(busca, quantidade, lambda t: self._ui("atividade", t), preco=preco,
+                                           confirmar_web=no_notebook, skins=no_notebook)
                 pasta = r["pasta"]
                 atalho = self._entregar_pasta(r["pasta_envio"])
                 videos = sum(1 for i in r["itens"] if i.get("video"))
@@ -602,19 +609,105 @@ class Jarvis:
             finally:
                 self._fabricando = False
             self._ui("tarefa", None, None)
+            if r and r.get("descartados"):
+                fala += f" Deixei de fora {len(r['descartados'])} que já têm site, conferindo na internet."
             with self._trava:
-                if pasta and not completo:
+                if pasta and not completo and not no_notebook:
                     fala += " " + self._preparar_publicacao(pasta)
                 self._falar(fala)
                 self._estado_parado()
             if pasta and completo:
                 self._etapa_github(pasta)
+            if pasta and no_notebook:
+                self._whatsapp_em_sequencia(r["pasta_envio"])
 
         if completo:
             self._github_oferecido = True  # o /700 pergunta do jeito dele; o vigia não pergunta de novo
         threading.Thread(target=trabalho, daemon=True).start()
         return (f"Começando a fábrica de sites de {busca}, senhor: até {quantidade} negócios sem site. "
                 "Vou mostrando na mini tela; leva alguns minutos.")
+
+    def _prospeccao_notebook(self, busca):
+        """Código C/19708090: o tipo de comércio + cidade ("pet shop em Cacoal"), tudo no notebook 3D."""
+        busca = (busca or "").strip(" .")
+        if not busca:
+            return "Qual tipo de comércio e cidade, senhor? Por exemplo: C/19708090 pet shop em Cacoal."
+        if " em " not in f" {busca.lower()} ":
+            busca += " em Cacoal"  # a cidade padrão é Cacoal
+        return self._fabrica_sites(busca, 3, no_notebook=True)
+
+    def _whatsapp_em_sequencia(self, pasta_envio):
+        """C/19708090, fim: WhatsApp Web no notebook 3D. Se pedir o QR Code, pausa e avisa; quando o senhor
+        escanear, continua sozinho. Depois pergunta comércio por comércio: cada mensagem só sai com o "sim"."""
+        import whatsapp
+
+        def falar(texto):
+            with self._trava:
+                self._falar(texto)
+                self._estado_parado()
+
+        try:
+            self._ui("abrirNotebook", "navegador")
+            estado = whatsapp.situacao()
+            if estado != "logado":
+                self._ui("tarefa", "Esperando o QR Code do WhatsApp", "leia com o celular")
+                falar("O WhatsApp pediu o QR Code, senhor. Ele está na tela do mini notebook. No celular: WhatsApp, "
+                      "Aparelhos conectados, Conectar um aparelho. Eu espero e continuo sozinho.")
+                fim = time.time() + 600
+                while estado != "logado" and time.time() < fim:
+                    time.sleep(5)
+                    estado = whatsapp.situacao(espera=10)
+                self._ui("tarefa", None, None)
+                if estado != "logado":
+                    falar("Não vi o WhatsApp conectar em 10 minutos, senhor. Quando ler o QR Code, diga: manda a "
+                          "mensagem pro próximo.")
+                    return
+                falar("WhatsApp conectado, senhor. Continuando.")
+        except Exception as erro:
+            log.exception("C/19708090: WhatsApp não abriu")
+            falar(f"Não consegui abrir o WhatsApp Web, senhor. {str(erro)[:120]}")
+            return
+        self._oferecer_proximo(pasta_envio)
+
+    def _oferecer_proximo(self, pasta):
+        """Mostra o próximo comércio da lista e pergunta. Com o "sim", envia e já pergunta o seguinte."""
+        import whatsapp
+        pendentes = [c for c in whatsapp.contatos(pasta) if c.get("whatsapp") and not c.get("enviado")]
+        with self._trava:
+            if not pendentes:
+                self._falar("Pronto, senhor: não sobrou nenhum comércio com celular para mandar nesta lista.")
+                self._estado_parado()
+                return
+            if whatsapp.enviados_hoje() >= whatsapp.LIMITE_POR_DIA:
+                self._falar(f"Já foram {whatsapp.LIMITE_POR_DIA} mensagens hoje, senhor. Paro aqui para o WhatsApp não "
+                            "bloquear o seu número; amanhã diga: manda a mensagem pro próximo.")
+                self._estado_parado()
+                return
+            contato = pendentes[0]
+
+            def enviar():
+                def trabalho():
+                    self._ui("tarefa", "WhatsApp", contato["nome"])
+                    try:
+                        whatsapp.enviar(contato, contato["mensagem"])
+                        whatsapp.marcar_enviado(pasta, contato, None)
+                        fala = f"Enviada para {contato['nome']}, senhor."
+                    except Exception as erro:
+                        log.exception("WhatsApp: falha ao enviar para %s", contato["nome"])
+                        fala = f"Não consegui mandar para {contato['nome']}, senhor: {str(erro)[:150]}"
+                    self._ui("tarefa", None, None)
+                    with self._trava:
+                        self._falar(fala)
+                    self._oferecer_proximo(pasta)  # já pergunta o seguinte
+                threading.Thread(target=trabalho, daemon=True).start()
+                return "Mandando, senhor. Acompanhe na tela do mini notebook."
+
+            self._pendente = enviar
+            self._ui("nota", f"✆ {contato['nome']} · {contato['telefone']}\n{contato['mensagem']}")
+            restantes = len(pendentes) - 1
+            self._falar(f"Mando para {contato['nome']}, {contato['telefone']}, a mensagem perguntando se quer ver a "
+                        f"prévia do site?{f' Depois dele faltam {restantes}.' if restantes else ''} Confirma?")
+            self._estado_parado()
 
     def _venda_700(self, nicho):
         """Código /700: comércios de Cacoal sem site -> site, zip e vídeo de cada um, com o preço de R$ 100 na
@@ -1124,7 +1217,7 @@ class Jarvis:
         if acao == "modo_fundo":
             return self._modo_fundo(pedido["ligar"])
         if acao == "modo_tela":
-            return self._modo_tela(pedido["tarefa"])
+            return self._modo_tela(pedido["tarefa"], pedido.get("virtual", True))
         if acao == "notebook_abrir":
             if pedido.get("flutuante"):
                 return self.abrir_notebook_flutuante()
@@ -1210,6 +1303,8 @@ class Jarvis:
             return self._fabrica_sites(pedido["busca"], pedido.get("quantidade", 3))
         if acao == "venda_700":
             return self._venda_700(pedido["nicho"])
+        if acao == "prospeccao_notebook":
+            return self._prospeccao_notebook(pedido["busca"])
         if acao == "fabrica_publicar":
             import fabrica_sites
             pasta = fabrica_sites.ultima_execucao()
@@ -1661,9 +1756,11 @@ class Jarvis:
         self._pendente = corrigir
         return fala + " Quer que eu peça ao Claude para corrigir?"
 
-    def _modo_tela(self, tarefa):
-        """Ferramenta controlar_notebook: o Braga vê a tela real e age nela (mouse e teclado de verdade), passo a
-        passo, no mini notebook. O senhor pode pausar, parar ou corrigir no meio (botões ou voz)."""
+    def _modo_tela(self, tarefa, virtual=True):
+        """Ferramenta controlar_notebook, no mini notebook 3D, passo a passo. O senhor pode pausar, parar ou
+        corrigir no meio (botões ou voz).
+        virtual (padrão): o Braga age no navegador dele, que só aparece dentro do Braga: nada abre no PC real.
+        virtual=False ("no PC real, ...", "usa a tela e ..."): mouse e teclado de verdade na tela do notebook."""
         import notebook
         if notebook.sessao.controlando:
             if tarefa.strip():  # pedido novo no meio da tarefa = correção
@@ -1677,14 +1774,18 @@ class Jarvis:
         def trabalho():
             import agente_tela
             import pyautogui
+            import navegador
             notebook.sessao.comecar(tarefa)
-            self._ui("tarefa", "Controlando o notebook", tarefa)
+            self._ui("tarefa", "Notebook virtual" if virtual else "Controlando o PC real", tarefa)
             self.mostrar_principal()
-            self._ui("abrirNotebook")  # tudo acontece dentro do Braga: os programas ficam atrás dele
+            if virtual:
+                navegador.preparar()
+            self._ui("abrirNotebook", "navegador" if virtual else "pc")
             time.sleep(1.5)
             try:
                 deu_certo, resumo = agente_tela.executar_tarefa(
-                    tarefa, lambda fala: self._ui("atividade", fala), alvo=notebook.alvo)
+                    tarefa, lambda fala: self._ui("atividade", fala),
+                    alvo=notebook.alvo_virtual if virtual else notebook.alvo)
             except pyautogui.FailSafeException:
                 resumo = "Parei, senhor: o mouse foi para o canto da tela, o freio de segurança."
             except Exception:
@@ -1696,6 +1797,7 @@ class Jarvis:
             self._ui("tarefa", None, None)
             with self._trava:
                 if confirmar:
+                    confirmar["virtual"] = virtual
                     self._pendente = lambda: self._notebook_confirmado(tarefa, confirmar)
                     self._falar(f"{confirmar['fala']} Confirma?")
                 else:
@@ -1703,25 +1805,33 @@ class Jarvis:
                         # terminou oferecendo algo: o "sim" do senhor continua a mesma tarefa
                         self._pendente = lambda: self._modo_tela(
                             f"{tarefa}\nNa vez anterior você terminou assim: \"{resumo}\". O usuário respondeu: "
-                            f"\"{getattr(self, '_resposta_pendente', 'sim')}\". Continue a partir daí.")
+                            f"\"{getattr(self, '_resposta_pendente', 'sim')}\". Continue a partir daí.", virtual)
                     self._falar(resumo)
                 self._estado_parado()
 
         threading.Thread(target=trabalho, daemon=True).start()
-        return ("Entendido, senhor. Vou fazer isso no mini notebook. Dá para pausar, parar ou corrigir por lá. "
-                "Freio: mouse no canto superior esquerdo.")
+        if virtual:
+            return ("Entendido, senhor. Vou fazer isso no notebook virtual: nada abre no seu PC. Dá para pausar, "
+                    "parar ou corrigir por lá.")
+        return ("Entendido, senhor. Vou fazer isso no PC real, pelo mini notebook. Dá para pausar, parar ou corrigir "
+                "por lá. Freio: mouse no canto superior esquerdo.")
 
     def _notebook_confirmado(self, tarefa, confirmar):
         """O senhor disse sim: o Braga clica no botão que o agente apontou (enviar, publicar, excluir) e confere."""
+        import navegador
         import notebook
         try:
-            notebook.controle.clicar(confirmar["fx"], confirmar["fy"])
+            if confirmar.get("virtual", True):
+                navegador.clicar(confirmar["fx"] * navegador.LARGURA, confirmar["fy"] * navegador.ALTURA)
+            else:
+                notebook.controle.clicar(confirmar["fx"], confirmar["fy"])
             notebook.sessao.registrar(f"Confirmado pelo senhor: {confirmar['fala']}")
         except Exception as erro:
             log.exception("Mini notebook: falha no clique confirmado")
             return f"Não consegui clicar, senhor. {str(erro)[:120]}"
         return self._modo_tela(f"{tarefa}\nO usuário confirmou e o Braga já clicou: {confirmar['fala']} "
-                               "Confira na tela se deu certo e conclua (não clique de novo no mesmo botão).")
+                               "Confira na tela se deu certo e conclua (não clique de novo no mesmo botão).",
+                               confirmar.get("virtual", True))
 
     def _modo_fundo(self, ligar):
         import fundo
