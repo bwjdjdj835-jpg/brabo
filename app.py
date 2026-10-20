@@ -489,6 +489,52 @@ class Jarvis:
         return (f"Começando a fábrica de sites de {busca}, senhor: até {quantidade} negócios sem site. "
                 "Vou mostrando na mini tela; leva alguns minutos.")
 
+    def _vigiar_github(self, intervalo=120):
+        """De tempos em tempos confere se o GitHub ficou pronto (o senhor fez o `gh auth login`). Quando fica e há
+        sites da fábrica esperando, pergunta uma vez se pode publicar. Publicar só acontece com o "sim"."""
+        import fabrica_sites
+        import github_pages
+        while True:
+            time.sleep(intervalo)
+            if getattr(self, "_github_oferecido", False) or self._pendente or self._falando.is_set():
+                continue
+            try:
+                pendentes = fabrica_sites.pendentes_de_publicar()
+                if not pendentes or not github_pages.situacao()[0]:
+                    continue
+            except Exception:
+                log.debug("Vigia do GitHub: falhou ao conferir", exc_info=True)
+                continue
+            self._github_oferecido = True  # pergunta uma vez por vez que o Braga abre
+            total = sum(n for _, n in pendentes)
+
+            def publicar_todos():
+                def trabalho():
+                    self._ui("tarefa", "Publicando no GitHub Pages", f"{total} sites")
+                    feitos, mais_nova = 0, None
+                    for pasta, _ in pendentes:
+                        try:
+                            n, execucao = fabrica_sites.publicar(pasta, lambda t: self._ui("atividade", t))
+                            feitos += n
+                            mais_nova = mais_nova or execucao
+                        except Exception:
+                            log.exception("Falha ao publicar %s", pasta)
+                    self._ui("tarefa", None, None)
+                    if mais_nova and mais_nova.get("pasta_envio"):
+                        self._entregar_pasta(mais_nova["pasta_envio"])  # contatos refeitos, agora com os links
+                    with self._trava:
+                        self._falar(f"Publiquei {feitos} sites no GitHub Pages, senhor. Os links já estão nos "
+                                    "contatos de cada pasta de envios.")
+                        self._estado_parado()
+                threading.Thread(target=trabalho, daemon=True).start()
+                return "Publicando, senhor. Aviso quando terminar."
+
+            with self._trava:
+                self._pendente = publicar_todos
+                self._falar(f"Senhor, o GitHub ficou pronto, e tenho {total} sites da fábrica esperando para "
+                            "publicar. Eles ficam públicos na internet. Publico agora?")
+                self._estado_parado()
+
     def _preparar_publicacao(self, pasta):
         """Publicar deixa os sites públicos na internet: só com confirmação. Sem GitHub pronto, explica o que falta."""
         import github_pages
@@ -1716,6 +1762,7 @@ def main():
     )
     jarvis._janela = janela
     threading.Thread(target=_vigiar_abertura, args=(jarvis,), daemon=True).start()
+    threading.Thread(target=jarvis._vigiar_github, daemon=True).start()
     webview.start()
 
 

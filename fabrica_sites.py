@@ -366,6 +366,14 @@ def checar_site(pasta_site, item):
     return problemas
 
 
+GRAVES = ("arquivos citados que não existem", "não existe index.html", "o site está curto demais")
+
+
+def _defeito_grave(problemas):
+    """Problemas que deixam o site quebrado na tela (não só incompleto): aí é melhor outro caminho."""
+    return any(p.startswith(GRAVES) for p in problemas or [])
+
+
 def site_pelo_claude(item, busca, pasta_site, modelo, avisar, tentativas=3):
     """O Claude Code constrói o site completo; a checagem reprova e manda corrigir, até `tentativas` voltas.
     Devolve (caminho do index.html, problemas que sobraram) ou (None, motivo) se o Claude não puder."""
@@ -401,6 +409,10 @@ def site_pelo_claude(item, busca, pasta_site, modelo, avisar, tentativas=3):
         problemas = checar_site(pasta_site, item)
         log.info("Fábrica de sites: %s, volta %d, problemas: %s", item["nome"], tentativa, problemas or "nenhum")
         if not problemas:
+            break
+        if not deu_certo:
+            # o Claude parou no meio (geralmente o limite de uso da conta): insistir só gasta tempo
+            log.warning("Fábrica de sites: o Claude parou no meio do site de %s; sem novas voltas", item["nome"])
             break
         pedido = ("A checagem automática do Jarvis reprovou o site desta pasta. Corrija TODOS estes problemas, sem "
                   "estragar o que já está bom: " + "; ".join(problemas))
@@ -562,6 +574,22 @@ def carregar(pasta):
         return json.load(arquivo)
 
 
+def pendentes_de_publicar():
+    """[(pasta, quantos sites ainda não publicados)] de todas as levas da fábrica, da mais nova para a mais velha."""
+    resultado = []
+    for nome in sorted(os.listdir(SAIDA) if os.path.isdir(SAIDA) else [], reverse=True):
+        pasta = os.path.join(SAIDA, nome)
+        if not os.path.isfile(os.path.join(pasta, "sites.json")):
+            continue
+        try:
+            faltam = sum(1 for i in carregar(pasta)["itens"] if not i.get("publicado"))
+        except (OSError, ValueError, KeyError):
+            continue
+        if faltam:
+            resultado.append((pasta, faltam))
+    return resultado
+
+
 def ultima_execucao():
     pastas = sorted(p for p in (os.listdir(SAIDA) if os.path.isdir(SAIDA) else [])
                     if os.path.isfile(os.path.join(SAIDA, p, "sites.json")))
@@ -611,12 +639,19 @@ def executar(busca, quantidade=PADRAO, ao_evento=None, gravar=True, com_claude=T
                 item["feito_por"] = "Claude" if item["site"] else "modelo"
             except Exception:
                 log.exception("Fábrica de sites: o Claude falhou no site de %s", nome)
+            if item["site"] and _defeito_grave(item["problemas"]):
+                log.warning("Fábrica de sites: site de %s saiu quebrado pelo Claude (%s); tentando a reserva",
+                            nome, item["problemas"])
+                item["site"] = None
             if not item["site"]:  # sem Claude: tenta uma IA de reserva (Gemini, Groq, OpenAI, Ollama)
                 try:
                     item["site"], item["problemas"] = site_pela_reserva(item, pasta_site, avisar)
                     item["feito_por"] = "IA de reserva" if item["site"] else "modelo"
                 except Exception:
                     log.exception("Fábrica de sites: a IA de reserva falhou no site de %s", nome)
+                if item["site"] and _defeito_grave(item["problemas"]):
+                    log.warning("Fábrica de sites: site de %s saiu quebrado pela reserva; usando o modelo", nome)
+                    item["site"] = None
         if not item["site"]:  # sem nenhuma IA: o modelo pronto garante que sempre sai um site
             avisar(f"{n}/{len(negocios)} · montando o site pelo modelo {item['modelo']} · {nome[:40]}")
             item["site"] = construir_site(negocio, busca, pasta_site, item["modelo"])
