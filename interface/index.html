@@ -27,7 +27,27 @@
   button { font: inherit; color: inherit; cursor: pointer; }
   input { font: inherit; color: var(--texto); user-select: text; }
 
+  /* avatar 3D: a cena fica atrás de tudo, a janela inteira; os painéis de vidro flutuam por cima */
+  #avatar3d { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; display: none; }
+  body.avatar #avatar3d { display: block; }
+  body.avatar #orb3d, body.avatar #bolha { display: none; }  /* o cartão Pensamentos mostra o texto */
+  body.avatar .vidro { background: rgba(10, 18, 34, .58); }
+  .av-cartoes { display: none; position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+  body.avatar:not(.com-pagina) .av-cartoes { display: block; }
+  .av-cartao { position: absolute; width: 230px; padding: 12px 14px; pointer-events: auto; font-size: 12px; }
+  .av-cartao h3 { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; letter-spacing: .16em;
+                  color: var(--cor2); margin-bottom: 8px; }
+  .av-cartao h3 i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  #av-pensamento { color: #dbe6fb; line-height: 1.45; min-height: 34px; max-height: 70px; overflow: hidden; }
+  .av-foco { margin-top: 10px; font-size: 11px; color: var(--suave); }
+  .av-foco .barra { margin-top: 4px; }
+  #av-atividade { list-style: none; display: flex; flex-direction: column; gap: 5px; color: #c4d2ea; }
+  #av-atividade li { display: flex; gap: 6px; align-items: baseline; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #av-atividade li i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--cor2); transform: translateY(-1px); }
+  #av-atividade li b { color: var(--suave); font-weight: 600; flex: none; }
+  #av-atividade li:empty::after, #av-atividade:empty::after { content: "Esperando o próximo comando…"; color: var(--suave); }
   .app {
+    position: relative; z-index: 1;
     height: 100%; display: grid; gap: 14px; padding: 14px 16px;
     grid-template-columns: 220px minmax(0, 1fr) 300px; grid-template-rows: auto minmax(0, 1fr);
   }
@@ -341,6 +361,7 @@
 </style>
 </head>
 <body class="iniciando">
+<canvas id="avatar3d"></canvas>
 <div class="app">
   <header class="topo">
     <div class="logo">
@@ -383,6 +404,17 @@
   <main class="centro">
     <div id="abas" hidden></div>
     <div class="reator">
+      <div class="av-cartoes">
+        <section class="av-cartao vidro" style="left: 0; top: 0">
+          <h3><i></i>PENSAMENTOS</h3>
+          <div id="av-pensamento">Como posso ajudar você hoje?</div>
+          <div class="av-foco">Foco<div class="barra"><i id="av-foco" style="width: 18%"></i></div></div>
+        </section>
+        <section class="av-cartao vidro" style="right: 0; top: 0">
+          <h3><i></i>ATIVIDADE AO VIVO</h3>
+          <ul id="av-atividade"></ul>
+        </section>
+      </div>
       <div id="paginas"></div>
       <canvas id="orb3d" title="Clique (ou aperte Espaço) para falar sem dizer Braga"></canvas>
     </div>
@@ -531,6 +563,7 @@
         <li><b>IAs</b> Claude primeiro; se acabar o crédito, Groq e as outras do .env</li>
         <li><b>Modo isolado</b> <span id="isolado-texto">desligado: o mini notebook é o seu PC (janelas atrás do Braga)</span></li>
       </ul>
+      <div class="linha"><b class="dica">Visual</b><button class="botao" id="visual-avatar">Avatar 3D</button><button class="botao" id="visual-esfera">Esfera</button></div>
       <div class="linha"><button class="botao" data-cmd="liga o modo isolado">Ligar modo isolado</button><button class="botao" data-cmd="desliga o modo isolado">Desligar (pede confirmação)</button></div>
       <ul id="detalhes" class="detalhes"></ul>
       <h2>Processamento <small>CPU</small></h2>
@@ -877,7 +910,8 @@
     estado(s) {
       estadoAtual = s;
       document.body.className = s + (tarefaAtiva ? " trabalhando" : "") + (abas.ativa !== "jarvis" ? " com-pagina" : "")
-        + (abas.lista.find((a) => a.id === abas.ativa)?.tipo === "notebook" ? " com-notebook" : "");
+        + (abas.lista.find((a) => a.id === abas.ativa)?.tipo === "notebook" ? " com-notebook" : "")
+        + (window.avatar?.ligado ? " avatar" : "");
       orbCor(CORES[s] || "#3d8bff");
       $("#estado").textContent = NOMES_ESTADO[s] || s.toUpperCase();
       $("#voz-estado").textContent = VOZ_ESTADO[s] || s;
@@ -1391,6 +1425,7 @@
         const passo = [Math.round(mov.dx), Math.round(mov.dy)];
         mov = { dx: mov.dx - passo[0], dy: mov.dy - passo[1] };
         enviando = true;
+        window.avatar?.evento("deslizar");
         const envio = this.fonte === "navegador" ? Promise.resolve(this.moverVirtual(passo))
           : pywebview.api.notebook_acao("deslizar", null, null, passo);
         envio.catch(() => {}).finally(() => { enviando = false; enviarMov(); });
@@ -1509,6 +1544,7 @@
       if (tipo === "tecla" && valor !== "win") return nav("tecla", String(valor).replace(/\bf(\d+)\b/g, "F$1"));
     },
     acao(tipo, p = null, valor = null) {
+      window.avatar?.evento(tipo);  // o avatar faz o mesmo movimento
       if (this.fonte === "navegador" && ["clicar", "duplo", "direito", "rolar", "digitar", "tecla", "tocar", "tocar_duplo"].includes(tipo)) {
         return this.acaoNavegador(tipo, p, valor);
       }
@@ -1749,6 +1785,20 @@
   }
   window.addEventListener("pywebviewready", iniciar);
   if (window.pywebview && window.pywebview.api && window.pywebview.api.pronto) iniciar();
+</script>
+<script src="avatar.js"></script>
+<script>
+  // visual da tela inicial: o avatar 3D (padrão) ou a esfera
+  try {
+    if (window.avatar) {
+      avatar.iniciar();
+      let visual = "avatar";
+      try { visual = localStorage.getItem("braga-visual") || visual; } catch (_) {}
+      avatar.ligar(visual !== "esfera");
+    }
+  } catch (e) { try { pywebview.api.erro_js("Avatar 3D: " + e.message); } catch (_) {} }
+  $("#visual-avatar").onclick = () => window.avatar?.ligar(true);
+  $("#visual-esfera").onclick = () => { window.avatar?.ligar(false); redimensionarOrb(); };
 </script>
 </body>
 </html>

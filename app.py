@@ -444,7 +444,7 @@ class Jarvis:
 
     def notebook_estado(self):
         import notebook
-        return {**notebook.sessao.estado(), "freio": notebook.controle.freio}
+        return {**notebook.sessao.estado(), "freio": notebook.controle.freio, "cursor": notebook.cursor()}
 
     def notebook_acao(self, tipo, x=None, y=None, valor=None):
         """Cliques, rolagem, teclas e os botões pausar/parar/freio vindos do mini notebook."""

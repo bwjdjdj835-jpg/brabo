@@ -444,6 +444,15 @@ alvo = AlvoNotebook(captura, controle, sessao)
 alvo_virtual = AlvoVirtual(sessao)
 
 
+def cursor():
+    """Onde está o mouse de verdade, de 0 a 1 na tela principal (o avatar do Braga move a mão junto)."""
+    m = captura.tamanho()
+    ponto = wintypes.POINT()
+    user32.GetCursorPos(ctypes.byref(ponto))
+    return [round(min(1, max(0, (ponto.x - m["left"]) / m["width"])), 4),
+            round(min(1, max(0, (ponto.y - m["top"]) / m["height"])), 4)]
+
+
 def info():
     m = captura.tamanho()
     return {"largura": m["width"], "altura": m["height"], "freio": controle.freio}
