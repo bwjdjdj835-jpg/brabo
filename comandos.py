@@ -496,6 +496,12 @@ def executar(comando, mini_tela=False, url_mini=""):
         if tem("quais", "lista", "minhas", "mostra"):
             return {"acao": "skill_listar"}
 
+    # ----- instalar programas pelo winget (com o "sim"): "instala o vlc", "baixa o programa obs" -----
+    instalar = re.match(r"^(?:instal\w*|baix\w*\s+(?:e\s+instal\w*\s+)?(?:o\s+|a\s+)?(?:programa|aplicativo|app))\s+"
+                        r"(?:o\s+|a\s+)?(?:programa\s+|aplicativo\s+|app\s+)?(.+)", t)
+    if instalar and not tem("skill", "skills", "habilidade"):
+        return {"acao": "instalar_programa", "nome": _com_acentos(instalar.group(1), t, original)}
+
     # ----- comandos criados por você (meus_comandos.json): têm prioridade sobre os padrões -----
     import comandos_usuario
     resposta_usuario = comandos_usuario.tentar(t, original)

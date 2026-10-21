@@ -20,9 +20,22 @@
   const cursor = { x: 0.5, y: 0.5 }, cursorAntes = { x: 0.5, y: 0.5 };
   const v = (x, y, z) => new THREE.Vector3(x, y, z);
 
-  // ---------- peças ----------
-  const mat = (cor, rugosidade = 0.85, metal = 0, extra = {}) =>
-    new THREE.MeshStandardMaterial({ color: cor, roughness: rugosidade, metalness: metal, ...extra });
+  // ---------- peças (estilo anime: sombreado de desenho em 3 tons e contorno preto) ----------
+  let gradiente = null;
+  function tonsDeAnime() {
+    gradiente = new THREE.DataTexture(new Uint8Array([60, 150, 255]), 3, 1, THREE.LuminanceFormat);
+    gradiente.minFilter = gradiente.magFilter = THREE.NearestFilter;
+    gradiente.needsUpdate = true;
+  }
+  const mat = (cor, _rugosidade, _metal, extra = {}) =>
+    new THREE.MeshToonMaterial({ color: cor, gradientMap: gradiente, ...extra });
+  const tintaContorno = new THREE.MeshBasicMaterial({ color: 0x05060a, side: THREE.BackSide });
+  function contornar(mesh, k = 1.07) {  // o "traço" do desenho: uma cópia preta, um pouco maior, por dentro
+    const traco = new THREE.Mesh(mesh.geometry, tintaContorno);
+    traco.scale.setScalar(k);
+    mesh.add(traco);
+    return mesh;
+  }
   const caixa = (l, a, p, m) => new THREE.Mesh(new THREE.BoxGeometry(l, a, p), m);
   const cilindro = (r1, r2, h, m, seg = 16) => new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, h, seg), m);
   const esfera = (r, m, seg = 20) => new THREE.Mesh(new THREE.SphereGeometry(r, seg, seg), m);
@@ -100,8 +113,8 @@
 
   function montarNotebook() {
     const notebook = new THREE.Group();
-    notebook.position.set(0.12, 0.75, -0.03);
-    notebook.rotation.y = -0.12;
+    notebook.position.set(0.1, 0.75, -0.03);
+    notebook.rotation.y = -0.24;  // de frente para o personagem
     cena.add(notebook);
     corpo.notebook = notebook;
     const cinza = mat(0x3a3a41, 0.45, 0.6);
@@ -153,11 +166,31 @@
     };
   }
 
+  function olhoDeAnime() {  // olho grande: branco, íris azul brilhante, pupila, dois brilhos e cílio grosso
+    return textura(128, 96, (g, l, a) => {
+      g.clearRect(0, 0, l, a);
+      g.fillStyle = "#f4f7ff";
+      g.beginPath(); g.ellipse(64, 54, 50, 34, 0, 0, Math.PI * 2); g.fill();
+      const iris = g.createRadialGradient(64, 50, 4, 64, 54, 30);
+      iris.addColorStop(0, "#9be7ff"); iris.addColorStop(0.55, "#2f8cff"); iris.addColorStop(1, "#0b2a6b");
+      g.fillStyle = iris;
+      g.beginPath(); g.ellipse(64, 56, 25, 31, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#050814";
+      g.beginPath(); g.ellipse(64, 58, 10, 14, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#ffffff";
+      g.beginPath(); g.arc(54, 44, 8, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(74, 68, 4, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = "#050814"; g.lineWidth = 9; g.lineCap = "round";
+      g.beginPath(); g.ellipse(64, 56, 52, 36, 0, Math.PI * 1.08, Math.PI * 1.92); g.stroke();
+    });
+  }
+
   function montarPersonagem() {
-    const moletom = mat(0x14161d, 0.95), pele = mat(0xc99a7e, 0.75), preto = mat(0x0a0b0e, 0.9);
-    const cabelo = mat(0xd8232a, 0.6, 0, { emissive: 0x3a0406 });
+    const moletom = mat(0x0d1018), pele = mat(0xf0c4a8), preto = mat(0x07080c);
+    const cabelo = mat(0xff2a3a, 0, 0, { emissive: 0x4a0710 });
     const pessoa = new THREE.Group();
-    pessoa.position.set(-0.04, 0, 0.42);
+    pessoa.position.set(0.0, 0, 0.4);
+    pessoa.rotation.y = -0.24;  // virado um pouco para a câmera: dá para ver o rosto de lado
     cena.add(pessoa);
     corpo.pessoa = pessoa;
     // cadeira
@@ -184,16 +217,16 @@
     tronco.rotation.x = -0.32;
     pessoa.add(tronco);
     corpo.tronco = tronco;
-    const peito = cilindro(0.16, 0.2, 0.5, moletom, 20);
+    const peito = contornar(cilindro(0.16, 0.2, 0.5, moletom, 20), 1.05);
     peito.position.y = 0.27;
     peito.scale.z = 0.72;
     tronco.add(peito);
     for (const lado of [-1, 1]) {
-      const ombro = esfera(0.085, moletom);
+      const ombro = contornar(esfera(0.085, moletom));
       ombro.position.set(lado * 0.18, 0.47, 0);
       tronco.add(ombro);
     }
-    const capuz = esfera(0.14, moletom, 18);
+    const capuz = contornar(esfera(0.14, moletom, 18), 1.05);
     capuz.position.set(0, 0.55, 0.07);
     capuz.scale.set(1.05, 0.7, 0.8);
     tronco.add(capuz);
@@ -204,47 +237,64 @@
     pescoco.position.set(0, 0.56, -0.02);
     tronco.add(pescoco);
     corpo.cabeca = pescoco;
-    const gola = cilindro(0.085, 0.095, 0.11, preto);
+    const gola = contornar(cilindro(0.085, 0.095, 0.11, preto));
     gola.position.y = 0.04;
     pescoco.add(gola);
-    const cabeca = esfera(0.105, pele, 24);
-    cabeca.position.y = 0.16;
-    cabeca.scale.set(0.95, 1.05, 1);
+    // cabeça grande, proporção de anime
+    const cabeca = contornar(esfera(0.13, pele, 28), 1.05);
+    cabeca.position.y = 0.19;
+    cabeca.scale.set(0.95, 1.04, 1);
     pescoco.add(cabeca);
-    const mascara = new THREE.Mesh(new THREE.CylinderGeometry(0.103, 0.1, 0.1, 24, 1, true), preto);
-    mascara.position.set(0, 0.11, -0.004);
-    mascara.material.side = THREE.DoubleSide;
+    const mascara = contornar(new THREE.Mesh(new THREE.CylinderGeometry(0.129, 0.12, 0.11, 28, 1, true),
+      mat(0x0c0d12, 0, 0, { side: THREE.DoubleSide })), 1.04);
+    mascara.position.set(0, 0.135, -0.004);
     pescoco.add(mascara);
+    corpo.olhos = [];
+    const texturaOlho = olhoDeAnime();
     for (const lado of [-1, 1]) {
-      const orelha = esfera(0.022, pele, 10);
-      orelha.position.set(lado * 0.1, 0.17, 0.01);
+      const orelha = contornar(esfera(0.026, pele, 10));
+      orelha.position.set(lado * 0.124, 0.19, 0.01);
       orelha.scale.set(0.5, 1, 0.8);
       pescoco.add(orelha);
-      const olho = esfera(0.011, preto, 8);
-      olho.position.set(lado * 0.035, 0.18, -0.098);
+      const olho = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 0.045),
+        new THREE.MeshBasicMaterial({ map: texturaOlho, transparent: true }));
+      olho.position.set(lado * 0.05, 0.205, -0.121);
+      olho.rotation.set(0, Math.PI + lado * -0.42, 0);  // virado para frente, acompanhando a curva do rosto
       pescoco.add(olho);
+      corpo.olhos.push(olho);
+      const sobrancelha = caixa(0.05, 0.008, 0.006, preto);
+      sobrancelha.position.set(lado * 0.05, 0.245, -0.12);
+      sobrancelha.rotation.set(0, lado * 0.42, lado * -0.12);
+      pescoco.add(sobrancelha);
     }
+    // cabelo de anime: mechas grandes, pontudas e jogadas para trás, mais a franja
     const mechas = new THREE.Group();
-    mechas.position.y = 0.16;
+    mechas.position.y = 0.19;
     pescoco.add(mechas);
-    let semente = 7;
+    let semente = 11;
     const sorte = () => ((semente = (semente * 9301 + 49297) % 233280) / 233280);
-    for (let i = 0; i < 64; i++) {  // mechas espetadas na metade de cima e atrás da cabeça
-      const fi = sorte() * Math.PI * 2, teta = sorte() * 1.25;
+    const mecha = (normal, direcao, grossura, comprimento) => {
+      const m = contornar(new THREE.Mesh(new THREE.ConeGeometry(grossura, comprimento, 4), cabelo), 1.08);
+      const ponta = direcao.normalize();
+      m.quaternion.setFromUnitVectors(v(0, 1, 0), ponta);
+      m.position.copy(normal.clone().multiplyScalar(0.11)).add(ponta.clone().multiplyScalar(comprimento * 0.35));
+      mechas.add(m);
+    };
+    for (let i = 0; i < 46; i++) {
+      const fi = sorte() * Math.PI * 2, teta = sorte() * 1.35;
       const normal = v(Math.sin(teta) * Math.cos(fi), Math.cos(teta), Math.sin(teta) * Math.sin(fi));
-      if (normal.z < -0.75 && normal.y < 0.5) continue;  // deixa a testa/rosto livres
-      const mecha = new THREE.Mesh(new THREE.ConeGeometry(0.028 + sorte() * 0.012, 0.11 + sorte() * 0.07, 5), cabelo);
-      mecha.position.copy(normal.clone().multiplyScalar(0.095));
-      const ponta = normal.clone().add(v((sorte() - 0.5) * 0.6, 0.25, 0.35)).normalize();
-      mecha.quaternion.setFromUnitVectors(v(0, 1, 0), ponta);
-      mecha.position.add(ponta.clone().multiplyScalar(0.04));
-      mechas.add(mecha);
+      if (normal.z < -0.45 && normal.y < 0.75) continue;  // o rosto fica livre (a franja vem abaixo)
+      mecha(normal, normal.clone().add(v((sorte() - 0.5) * 0.5, 0.35, 0.55)), 0.04 + sorte() * 0.018, 0.17 + sorte() * 0.11);
+    }
+    for (const x of [-0.07, -0.025, 0.025, 0.07]) {  // franja caindo na testa
+      const normal = v(x * 4, 0.6, -0.75).normalize();
+      mecha(normal, v(x * 2, -0.75, -0.5), 0.032, 0.13);
     }
     // braços: posicionados a cada quadro (cinemática inversa simples de dois ossos)
     for (const lado of ["E", "D"]) {
-      const braco = cilindro(0.048, 0.052, 1, moletom);
-      const antebraco = cilindro(0.042, 0.048, 1, moletom);
-      const mao = caixa(0.07, 0.024, 0.085, pele);
+      const braco = contornar(cilindro(0.048, 0.052, 1, moletom), 1.1);
+      const antebraco = contornar(cilindro(0.042, 0.048, 1, moletom), 1.1);
+      const mao = contornar(caixa(0.07, 0.024, 0.085, pele), 1.12);
       const punho = cilindro(0.046, 0.046, 0.03, preto);
       for (const m of [braco, antebraco, mao, punho]) cena.add(m);
       bracos[lado] = { braco, antebraco, mao, punho, alvo: v(0, 0, 0), pronto: false };
@@ -323,8 +373,8 @@
     if (buscandoQuadro || !window.pywebview?.api?.notebook_info) return;
     buscandoQuadro = true;
     try {
-      const doNavegador = nb.fonte === "navegador";
-      const info = doNavegador ? (nb.navInfo || await pywebview.api.navegador_info()) : (nb.info || await pywebview.api.notebook_info());
+      if (!nb.info) nb.info = await pywebview.api.notebook_info();
+      const info = doNavegador() ? (nb.navInfo || await pywebview.api.navegador_info()) : nb.info;
       const r = await fetch(`${info.quadro}?n=${numeroQuadro}&t=${Date.now()}`, { cache: "no-store" });
       if (r.ok) {
         numeroQuadro = r.headers.get("X-Quadro") || "";
@@ -370,9 +420,12 @@
       }
       mostrarAtividade(acoes);
     }
-    // a tela dele fica ao vivo enquanto o Braga controla o PC, ou a fábrica roda no navegador do Braga
-    avatar.aoVivo = !!estadoNb.controlando || (nb.fonte === "navegador" && typeof tarefaAtiva !== "undefined" && tarefaAtiva);
+    // a tela dele é o PC de verdade, sempre ao vivo (com o Braga por cima e as janelas atrás dele)
+    avatar.aoVivo = true;
   }
+
+  // de onde vem a imagem da tela dele: o PC de verdade, ou o navegador do Braga quando a fábrica roda lá
+  const doNavegador = () => nb.fonte === "navegador" && typeof tarefaAtiva !== "undefined" && tarefaAtiva;
 
   // ---------- cartões de vidro ----------
   function mostrarAtividade(acoes) {
@@ -443,6 +496,8 @@
     corpo.cabeca.rotation.x = 0.28 + Math.sin(t / 2100) * 0.03 + fala * 0.12 * Math.sin(t / 90);
     corpo.cabeca.rotation.z = pensando ? 0.16 : Math.sin(t / 3000) * 0.03;
     corpo.cabeca.rotation.y = noMouse ? (cursor.x - 0.5) * 0.25 : Math.sin(t / 2600) * 0.05;
+    const piscando = (t % 4200) < 130;  // pisca a cada ~4 segundos
+    for (const olho of corpo.olhos) olho.scale.y = piscando ? 0.1 : 1;
     renderer.render(cena, camera);
   }
 
@@ -457,14 +512,58 @@
     camera.updateProjectionMatrix();
   }
 
-  // clique na tela do notebook dele = abre o mini notebook; no resto da cena, falar (como a esfera)
-  function aoClicar(e) {
-    if (!avatar.ligado || document.body.classList.contains("com-pagina")) return;
+  // a tela do notebook dele é o PC de verdade: clicar nela clica no PC (clique, duplo, direito, rodinha).
+  // Fora da tela, clicar é falar (como a esfera).
+  function pontoNaTela(e) {
+    if (!avatar.ligado || document.body.classList.contains("com-pagina")) return undefined;
     const r = canvas.getBoundingClientRect();
     const raio = new THREE.Raycaster();
     raio.setFromCamera({ x: ((e.clientX - r.left) / r.width) * 2 - 1, y: -((e.clientY - r.top) / r.height) * 2 + 1 }, camera);
-    if (raio.intersectObject(telaMesh).length) nb.abrir();
-    else if (typeof falarAgora === "function") falarAgora();
+    const acerto = raio.intersectObject(telaMesh)[0];
+    return acerto ? { x: acerto.uv.x, y: 1 - acerto.uv.y } : null;  // a imagem preenche a tela inteira (16:10)
+  }
+
+  function agirNaTela(tipo, p, valor = null) {
+    avatar.evento(tipo);
+    if (doNavegador()) {
+      const L = nb.navInfo?.largura || 1280, A = nb.navInfo?.altura || 800;
+      if (tipo === "rolar") return pywebview.api.navegador_acao("rolar", valor);
+      pywebview.api.navegador_acao("clicar", p.x * L, p.y * A);
+      if (tipo === "duplo") pywebview.api.navegador_acao("clicar", p.x * L, p.y * A);
+      return;
+    }
+    pywebview.api.notebook_acao(tipo, p?.x ?? null, p?.y ?? null, valor);
+  }
+
+  let cliqueAgendado = null;
+  function aoClicar(e) {
+    const p = pontoNaTela(e);
+    if (p === undefined) return;
+    if (!p) { if (typeof falarAgora === "function") falarAgora(); return; }
+    clearTimeout(cliqueAgendado);  // espera um pouco: se vier o segundo clique, vira clique duplo
+    cliqueAgendado = setTimeout(() => agirNaTela("clicar", p), 260);
+  }
+  function aoClicarDuplo(e) {
+    const p = pontoNaTela(e);
+    if (!p) return;
+    clearTimeout(cliqueAgendado);
+    agirNaTela("duplo", p);
+  }
+  function aoBotaoDireito(e) {
+    const p = pontoNaTela(e);
+    if (!p) return;
+    e.preventDefault();
+    agirNaTela("direito", p);
+  }
+  let rolagem = 0, rolando = false;
+  function aoRolar(e) {
+    const p = pontoNaTela(e);
+    if (!p) return;
+    e.preventDefault();
+    rolagem += e.deltaY;
+    if (rolando) return;
+    rolando = true;
+    setTimeout(() => { agirNaTela("rolar", p, Math.round(rolagem)); rolagem = 0; rolando = false; }, 150);
   }
 
   avatar.iniciar = () => {
@@ -478,10 +577,15 @@
     camera.position.set(2.05, 1.7, 1.55);
     camera.lookAt(0.02, 0.9, 0.02);
     avatar.camera = camera;
+    tonsDeAnime();
     montarSala(); montarMesa(); montarNotebook(); montarPersonagem();
     redimensionar();
     addEventListener("resize", redimensionar);
-    document.querySelector(".reator").addEventListener("click", aoClicar);
+    const reator = document.querySelector(".reator");
+    reator.addEventListener("click", aoClicar);
+    reator.addEventListener("dblclick", aoClicarDuplo);
+    reator.addEventListener("contextmenu", aoBotaoDireito);
+    reator.addEventListener("wheel", aoRolar, { passive: false });
     requestAnimationFrame(animar);
   };
 

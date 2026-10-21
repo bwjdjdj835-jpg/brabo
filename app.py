@@ -1028,6 +1028,61 @@ class Jarvis:
         import isolamento
         return isolamento.ligado()
 
+    def _instalar_programa(self, nome):
+        """"instala o VLC": procura no winget, diz qual achou e só instala com o "sim" do senhor."""
+        import isolamento
+        nome = (nome or "").strip(" .")
+        if not nome:
+            return "Qual programa, senhor? Por exemplo: instala o VLC."
+        if isolamento.ligado():
+            return isolamento.bloqueado("instalador de programas", "rodo o")
+
+        def trabalho():
+            import programas
+            self._ui("tarefa", "Procurando o programa", nome)
+            try:
+                achados = programas.buscar(nome)
+                escolhido = programas.melhor(achados, nome)
+            except Exception as erro:
+                log.warning("winget: busca de %s falhou", nome, exc_info=True)
+                achados, escolhido, motivo = [], None, str(erro)[:120]
+            else:
+                motivo = "o winget não achou nada com esse nome"
+            self._ui("tarefa", None, None)
+            with self._trava:
+                if not escolhido:
+                    self._falar(f"Não achei o programa {nome}, senhor: {motivo}.")
+                    self._estado_parado()
+                    return
+
+                def instalar():
+                    def rodar():
+                        self._ui("tarefa", "Instalando pelo winget", f"{escolhido['nome']} {escolhido['versao']}")
+                        isolamento.antes_de_abrir_no_pc()  # se o instalador abrir janela, ela fica no mini notebook
+                        try:
+                            deu_certo, resumo = programas.instalar(escolhido["id"], lambda t: self._ui("atividade", t))
+                        except Exception as erro:
+                            log.exception("winget: falha ao instalar %s", escolhido["id"])
+                            deu_certo, resumo = False, str(erro)[:150]
+                        self._ui("tarefa", None, None)
+                        with self._trava:
+                            self._falar(f"Pronto, senhor: {escolhido['nome']} instalado." if deu_certo
+                                        else f"Não consegui instalar {escolhido['nome']}, senhor. {resumo}")
+                            self._estado_parado()
+                    threading.Thread(target=rodar, daemon=True).start()
+                    return f"Instalando {escolhido['nome']}, senhor. Acompanhe no mini notebook."
+
+                self._pendente = instalar
+                outros = ", ".join(a["nome"] for a in achados if a is not escolhido)[:150]
+                self._ui("nota", f"winget: {escolhido['nome']} ({escolhido['id']}) {escolhido['versao']}"
+                                 + (f"\nOutros: {outros}" if outros else ""))
+                self._falar(f"Achei o {escolhido['nome']}, versão {escolhido['versao']}, no winget. Vou instalar e "
+                            "aceitar os termos de uso dele. Confirma?")
+                self._estado_parado()
+
+        threading.Thread(target=trabalho, daemon=True).start()
+        return f"Procurando {nome} no winget, senhor."
+
     def _preparar_pc(self):
         """Antes de abrir algo no PC de verdade: o Braga vem para a frente, mostra o mini notebook e fica por cima
         de tudo. A janela nova nasce atrás dele e o senhor a vê (e mexe nela) pelo mini notebook."""
@@ -1261,6 +1316,8 @@ class Jarvis:
             return "Abrindo seus dados, senhor. Preencha do seu jeito e salve."
         if acao == "modo_fundo":
             return self._modo_fundo(pedido["ligar"])
+        if acao == "instalar_programa":
+            return self._instalar_programa(pedido["nome"])
         if acao == "modo_isolado":
             return self._modo_isolado(pedido["ligar"])
         if acao == "modo_tela":
