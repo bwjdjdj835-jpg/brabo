@@ -348,24 +348,23 @@ export function criarCena(canvas, aoCarregar) {
 }
 
 // A tela do ThinkPad tem duas camadas:
-// - fundo: o quadro da tela do PC (ImageBitmap) vai DIRETO para a placa de vídeo. Passar por um canvas 2D antes
-//   obrigava o navegador a ir e voltar da placa a cada quadro, e isso travava o quarto no vídeo Intel;
+// - fundo: um canvas de 960x540 que só é redesenhado (e reenviado à placa de vídeo) quando chega um quadro novo
+//   do PC, ~9 por segundo. (Mandar o ImageBitmap direto para a textura deixava a tela parada no vídeo Intel.)
 // - marcas (cursor grande, anel, cliques, faixa de estado): um canvas pequeno e transparente por cima, só
 //   redesenhado quando alguma marca muda.
 function criarTelaNotebook(renderer) {
   const preparar = t => { t.flipY = false; t.colorSpace = THREE.SRGBColorSpace; t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; return t; };
-  const aguardo = document.createElement('canvas'); aguardo.width = 640; aguardo.height = 360;
-  const textura = preparar(new THREE.Texture(aguardo));
-  textura.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
   const W = 960, H = 540;
+  const fundo = document.createElement('canvas'); fundo.width = W; fundo.height = H;
+  const f = fundo.getContext('2d'), textura = preparar(new THREE.CanvasTexture(fundo));
+  textura.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const c = cv.getContext('2d'), camada = preparar(new THREE.CanvasTexture(cv));
-  let anterior = null, temQuadro = false, erroDesenhado, cliques = [], ultimo = -1;
+  let temQuadro = false, erroDesenhado, cliques = [], ultimo = -1;
   function desenharAguardo() {
-    const g = aguardo.getContext('2d');
-    g.fillStyle = '#0a1f5c'; g.fillRect(0, 0, 640, 360); g.fillStyle = '#fff'; g.textAlign = 'center';
-    g.font = 'bold 28px sans-serif'; g.fillText('Ligando a tela do seu PC...', 320, 175);
-    g.font = '17px sans-serif'; g.fillText(api.erro || 'mini notebook do Braga', 320, 208);
+    f.fillStyle = '#0a1f5c'; f.fillRect(0, 0, W, H); f.fillStyle = '#fff'; f.textAlign = 'center';
+    f.font = 'bold 40px sans-serif'; f.fillText('Ligando a tela do seu PC...', W / 2, H / 2);
+    f.font = '24px sans-serif'; f.fillText(api.erro || 'mini notebook do Braga', W / 2, H / 2 + 46);
     erroDesenhado = api.erro; textura.needsUpdate = true;
   }
   const api = {
@@ -375,10 +374,9 @@ function criarTelaNotebook(renderer) {
         toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
       m.renderOrder = 2; tela.add(m);
     },
-    frame(bmp) {
-      if (anterior) anterior.close();   // o de dois quadros atrás já foi enviado à placa: pode liberar
-      anterior = temQuadro ? textura.image : null;
-      textura.image = bmp; textura.needsUpdate = true; temQuadro = true; api.erro = null;
+    frame(bmp) {   // quadro novo da tela do PC (já reduzido para 960x540 ao abrir o JPEG)
+      f.drawImage(bmp, 0, 0, W, H); bmp.close();
+      textura.needsUpdate = true; temQuadro = true; api.erro = null;
     },
     clique(u, v) { cliques.push({ u, v, t: performance.now() }); },
     desenhar(t, e) {

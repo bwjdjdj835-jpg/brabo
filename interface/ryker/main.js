@@ -158,7 +158,7 @@ async function buscarQuadro() {
     const r = await fetch(`${info.quadro}?n=${numeroQuadro}&t=${Date.now()}`, { cache: 'no-store' });
     if (r.ok) {
       numeroQuadro = r.headers.get('X-Quadro') || '';
-      if (r.status === 200) { cena.quadro(await createImageBitmap(await r.blob())); quadrosEspelho++; }
+      if (r.status === 200) { cena.quadro(await createImageBitmap(await r.blob(), { resizeWidth: 960, resizeHeight: 540, resizeQuality: 'medium' })); quadrosEspelho++; }
     } else cena.aviso('Captura da tela indisponível agora');
   } catch (_) {}
   buscando = false;
