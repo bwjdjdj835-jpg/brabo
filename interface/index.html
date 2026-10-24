@@ -369,6 +369,8 @@
       <div><b>BRAGA</b><small>Assistente Inteligente</small></div>
     </div>
     <div class="topo-botoes">
+      <button class="pilula" onclick="location.href='ryker/index.html'" title="Voltar ao quarto 3D do Ryker">
+        <svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9H3z"/></svg>Quarto 3D</button>
       <button class="pilula" id="btn-notebook" title="A tela do seu notebook dentro do Braga">
         <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/></svg>Abrir Mini Notebook</button>
       <button class="pilula" data-cmd="abre a mini tela" title="Navegador da Microsoft (Edge + Bing) dentro do Braga">
@@ -1782,6 +1784,8 @@
     atualizarStatus();
     setInterval(atualizarStatus, 2000);
     pywebview.api.pronto();
+    // veio do quarto 3D pedindo a mini tela (o quarto 3D não tem a mini tela)
+    if (new URLSearchParams(location.search).get("abrir") === "navegador") setTimeout(() => mini.abrir(), 300);
   }
   window.addEventListener("pywebviewready", iniciar);
   if (window.pywebview && window.pywebview.api && window.pywebview.api.pronto) iniciar();

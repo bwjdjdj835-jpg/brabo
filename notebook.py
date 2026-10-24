@@ -444,6 +444,29 @@ alvo = AlvoNotebook(captura, controle, sessao)
 alvo_virtual = AlvoVirtual(sessao)
 
 
+def atalho_parar(ao_parar=None):
+    """Ctrl+Alt+Q em qualquer janela para o Braga no PC (como o botão PARAR). Usa o RegisterHotKey do Windows,
+    que só avisa desse atalho: não é um gancho que lê o teclado inteiro (antivírus não reclamam)."""
+    def vigiar():
+        MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, WM_HOTKEY = 0x1, 0x2, 0x4000, 0x312
+        if not user32.RegisterHotKey(None, 1, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, ord("Q")):
+            log.warning("Atalho Ctrl+Alt+Q indisponível (outro programa já usa)")
+            return
+        mensagem = wintypes.MSG()
+        while user32.GetMessageW(ctypes.byref(mensagem), None, 0, 0) > 0:
+            if mensagem.message == WM_HOTKEY:
+                sessao.parar.set()
+                sessao.pausado.clear()
+                sessao.registrar("Parado pelo senhor: Ctrl+Alt+Q")
+                if ao_parar:
+                    try:
+                        ao_parar()
+                    except Exception:
+                        log.debug("Ctrl+Alt+Q: falha ao avisar a interface", exc_info=True)
+
+    threading.Thread(target=vigiar, daemon=True, name="atalho-parar").start()
+
+
 def cursor():
     """Onde está o mouse de verdade, de 0 a 1 na tela principal (o avatar do Braga move a mão junto)."""
     m = captura.tamanho()

@@ -2307,8 +2307,34 @@ def main():
     enviar_email.preparar()
     # Bot do Telegram (só liga se houver token no .env)
     jarvis._bot = telegram_bot.iniciar(jarvis.responder, jarvis.status)
-    import interface_qt
-    interface_qt.iniciar(jarvis, identidade.SIGLA)
+    # Interface: "ryker" (padrão: o quarto 3D do Ryker, com a tela do PC no notebook dele), "classica" (o painel
+    # completo) ou "qt" (a janela PyQt6). Troca no .env: JARVIS_INTERFACE=classica
+    escolha = os.environ.get("JARVIS_INTERFACE", "ryker").strip().lower()
+    if escolha == "qt":
+        import interface_qt
+        interface_qt.iniciar(jarvis, identidade.SIGLA)
+        return
+    import notebook
+    notebook.atalho_parar(lambda: jarvis._ui("parado", "Ctrl+Alt+Q"))  # freio pelo teclado, em qualquer janela
+    pagina = "interface/index.html" if escolha == "classica" else "interface/ryker/index.html"
+    try:
+        interface = servidor.iniciar() + "/" + pagina
+    except Exception:
+        log.exception("Servidor local falhou; abrindo a interface direto do arquivo (YouTube nas abas não toca)")
+        interface = os.path.join(PASTA, "interface", "index.html")
+    janela = webview.create_window(
+        identidade.SIGLA,
+        interface,
+        js_api=jarvis,
+        maximized=True,
+        min_size=(900, 600),
+        background_color="#020a12",
+    )
+    jarvis._janela = janela
+    threading.Thread(target=_vigiar_abertura, args=(jarvis,), daemon=True).start()
+    threading.Thread(target=jarvis._vigiar_github, daemon=True).start()
+    threading.Thread(target=jarvis._vigiar_respostas, daemon=True).start()
+    webview.start()
 
 
 _trava_unica = None  # fica aberta enquanto o Jarvis roda

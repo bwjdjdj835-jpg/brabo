@@ -13,8 +13,15 @@ Regra: tudo que publica, instala, clica na tela ou apaga pede confirmação ("Co
 - [ ] 7. Instalar programas pelo winget ("instala o VLC"), com confirmação
 - [ ] 8. Criar apps mais rápido (modelo, modelos de projeto prontos, menos espera)
 - [ ] 9. Ideias da pesquisa "como fazer um Jarvis" (lembretes, timer, clima, rotina...)
+- [ ] Quarto 3D sem internet: baixar o three.js 0.160 para interface/ryker/lib (hoje vem do unpkg).
+- [ ] Quarto 3D: mini tela (navegador do Braga) e digitação direta no notebook 3D; hoje vão pelo Painel completo.
 
 ## Feito
+- [x] Quarto 3D do Ryker é a tela principal (interface/ryker, feito com o Grok e ligado ao Braga): o ThinkPad 3D
+  mostra a tela do PC ao vivo (mini notebook), o Ryker mexe no touchpad/teclado quando o senhor ou o Braga mexem,
+  log de ações, cliques na tela 3D = cliques no PC (botão grande, desligado por padrão), PARAR / Esc×3 /
+  Ctrl+Alt+Q global (RegisterHotKey, notebook.atalho_parar). "Painel completo" abre a interface antiga.
+  JARVIS_INTERFACE no .env escolhe: ryker, classica ou qt. Mais leve: pixel 1:1, sombra fixa, 30 fps, tela 1280.
 - [x] Código /700 (ou "barra 700 pet shop"): fábrica de sites em Cacoal (padrão) com "R$ 100" na mensagem -> login do
   GitHub na mini tela (github.com/login/device, código já copiado) -> publicar com o "sim" -> WhatsApp Web aberto.
   Envio um por vez com o "sim" ("manda a mensagem pro próximo"). Vigia de respostas: com o WhatsApp aberto na mini
