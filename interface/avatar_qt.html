@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
+    canvas { display: block; width: 100%; height: 100%; }
+    #aviso {
+      position: fixed; inset: 0; display: grid; place-items: center; padding: 24px;
+      color: #9eb3cf; background: #081321; font: 14px "Segoe UI", sans-serif;
+      text-align: center;
+    }
+    #aviso.erro { color: #ffc1c1; }
+    #nota {
+      position: fixed; left: 14px; bottom: 12px; color: #aab9cc;
+      background: #0b1726dd; border: 1px solid #29405b; border-radius: 8px;
+      padding: 8px 11px; font: 12px "Segoe UI", sans-serif; pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="aviso">Carregando o modelo 3D…</div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script>
+    (() => {
+      const aviso = document.querySelector("#aviso");
+      if (!window.THREE || !THREE.GLTFLoader) {
+        aviso.className = "erro";
+        aviso.textContent = "Não consegui carregar o renderizador 3D. Confira a conexão com a internet.";
+        return;
+      }
+
+      const cena = new THREE.Scene();
+      cena.background = new THREE.Color("#081321");
+      const camera = new THREE.PerspectiveCamera(34, 1, 0.01, 100);
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.setClearColor("#081321", 1);
+      document.body.appendChild(renderer.domElement);
+
+      cena.add(new THREE.HemisphereLight(0xd8e8ff, 0x222b3a, 1.25));
+      const principal = new THREE.DirectionalLight(0xffffff, 2.4);
+      principal.position.set(3, 5, 4);
+      cena.add(principal);
+      principal.intensity = 1.55;
+      const contorno = new THREE.DirectionalLight(0x579cff, 0.8);
+      contorno.position.set(-3, 2, -4);
+      cena.add(contorno);
+
+      const grade = new THREE.GridHelper(8, 24, 0x294567, 0x172a40);
+      grade.position.y = -1;
+      cena.add(grade);
+      const raiz = new THREE.Group();
+      cena.add(raiz);
+
+      const mesa = new THREE.Mesh(
+        new THREE.BoxGeometry(2.25, 0.09, 1.05),
+        new THREE.MeshStandardMaterial({ color: 0x38291f, roughness: 0.78 })
+      );
+      mesa.position.set(0, -0.33, 0.85);
+      cena.add(mesa);
+      for (const x of [-1.08, 1.08]) {
+        for (const z of [0.48, 1.23]) {
+          const perna = new THREE.Mesh(
+            new THREE.BoxGeometry(0.07, 0.82, 0.07),
+            new THREE.MeshStandardMaterial({ color: 0x30251e, roughness: 0.82 })
+          );
+          perna.position.set(x, -0.78, z);
+          cena.add(perna);
+        }
+      }
+
+      const laptop = new THREE.Group();
+      laptop.position.set(0.55, -0.275, 1.08);
+      laptop.rotation.y = Math.PI;
+      cena.add(laptop);
+      const metal = new THREE.MeshStandardMaterial({ color: 0x6d7785, metalness: 0.72, roughness: 0.32 });
+      const base = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.04, 0.52), metal);
+      laptop.add(base);
+      const teclado = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.64, 0.23),
+        new THREE.MeshStandardMaterial({ color: 0x202a37, roughness: 0.85 })
+      );
+      teclado.rotation.x = -Math.PI / 2;
+      teclado.position.set(0, 0.024, -0.035);
+      laptop.add(teclado);
+
+      const tela = document.createElement("canvas");
+      tela.width = 720;
+      tela.height = 450;
+      const tinta = tela.getContext("2d");
+      tinta.fillStyle = "#0a111c";
+      tinta.fillRect(0, 0, tela.width, tela.height);
+      tinta.fillStyle = "#172438";
+      tinta.fillRect(0, 0, tela.width, 42);
+      tinta.fillStyle = "#d8e5f8";
+      tinta.font = "600 19px Segoe UI";
+      tinta.fillText("BRAGA  ·  ÁREA DE TRABALHO", 22, 28);
+      for (let i = 0; i < 11; i++) {
+        tinta.fillStyle = ["#82aaff", "#c3e88d", "#c792ea", "#89ddff"][i % 4];
+        tinta.fillRect(34 + (i % 3) * 18, 85 + i * 25, 170 + ((i * 47) % 250), 7);
+      }
+      const telaMaterial = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(tela) });
+      const moldura = new THREE.Mesh(
+        new THREE.BoxGeometry(0.78, 0.49, 0.035),
+        new THREE.MeshStandardMaterial({ color: 0x303844, metalness: 0.55, roughness: 0.4 })
+      );
+      moldura.position.set(0, 0.25, -0.245);
+      moldura.rotation.x = -0.12;
+      laptop.add(moldura);
+      const painel = new THREE.Mesh(new THREE.PlaneGeometry(0.72, 0.42), telaMaterial);
+      painel.position.set(0, 0.255, -0.224);
+      painel.rotation.x = -0.12;
+      laptop.add(painel);
+
+      new THREE.GLTFLoader().load(
+        "./New_Project_22102026.glb",
+        (gltf) => {
+          raiz.add(gltf.scene);
+          const caixa = new THREE.Box3().setFromObject(raiz);
+          const centro = caixa.getCenter(new THREE.Vector3());
+          const tamanho = caixa.getSize(new THREE.Vector3());
+          const maior = Math.max(tamanho.x, tamanho.y, tamanho.z);
+          const escala = maior > 0 ? 2.2 / maior : 1;
+          raiz.scale.setScalar(escala);
+          raiz.position.copy(centro.multiplyScalar(-escala));
+          raiz.position.x += 0.4;
+          const distancia = Math.max(2.8, maior * 2.2);
+          camera.position.set(distancia * 1.15, distancia * 0.72, -distancia * 0.8);
+          camera.lookAt(0.05, -0.12, 0.38);
+          aviso.remove();
+          let malhas = 0;
+          raiz.traverse((objeto) => { if (objeto.isMesh) malhas++; });
+          window.bragaModelInfo = { loaded: true, meshCount: malhas };
+          window.dispatchEvent(new Event("braga-modelo-carregado"));
+        },
+        undefined,
+        (erro) => {
+          console.error("Falha ao abrir o GLB:", erro);
+          aviso.className = "erro";
+          aviso.textContent = "Não consegui abrir o arquivo GLB. Confira se o modelo continua na pasta da interface.";
+        }
+      );
+
+      function redimensionar() {
+        const largura = Math.max(1, window.innerWidth);
+        const altura = Math.max(1, window.innerHeight);
+        renderer.setSize(largura, altura, false);
+        camera.aspect = largura / altura;
+        camera.updateProjectionMatrix();
+      }
+      window.addEventListener("resize", redimensionar);
+      redimensionar();
+
+      let arrastando = false;
+      let xAntes = 0;
+      renderer.domElement.addEventListener("pointerdown", (evento) => {
+        arrastando = true;
+        xAntes = evento.clientX;
+        renderer.domElement.setPointerCapture(evento.pointerId);
+      });
+      renderer.domElement.addEventListener("pointermove", (evento) => {
+        if (!arrastando) return;
+        raiz.rotation.y += (evento.clientX - xAntes) * 0.008;
+        xAntes = evento.clientX;
+      });
+      renderer.domElement.addEventListener("pointerup", () => { arrastando = false; });
+
+      function animar() {
+        requestAnimationFrame(animar);
+        renderer.render(cena, camera);
+      }
+      requestAnimationFrame(animar);
+    })();
+  </script>
+  <div id="nota">Prévia de cena · tela ilustrativa · GLB estático (sem rig/animações)</div>
+</body>
+</html>

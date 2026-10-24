@@ -370,6 +370,11 @@ class Jarvis:
     def abrir_pip(self):
         """Abre (ou traz para a frente) a mini tela flutuante, no canto de baixo à direita."""
         import navegador
+        if hasattr(self._janela, "abrir_url"):
+            endereco = self._url_mini or navegador.INICIO
+            if self._janela.abrir_url(endereco):
+                return "Abri o site no navegador padrão, senhor. A mini tela não está disponível nessa interface."
+            return "Não consegui abrir o site no navegador padrão, senhor."
         if getattr(self, "_pip", None) is not None:
             try:
                 self._pip.restore()
@@ -458,6 +463,8 @@ class Jarvis:
 
     def abrir_notebook_flutuante(self):
         """Notebook flutuante: a tela real em miniatura, sempre por cima, com pausar/parar e o registro."""
+        if hasattr(self._janela, "abrir_url"):
+            return "O mini notebook ainda não está disponível na interface PyQt6, senhor."
         import notebook
         if getattr(self, "_nb", None) is not None:
             try:
@@ -497,6 +504,13 @@ class Jarvis:
     def _abrir_mini_tela(self, alvo, buscador="bing"):
         """Abre um site (ou uma busca, no Bing por padrão) no navegador do Jarvis e mostra a mini tela."""
         import navegador
+        if hasattr(self._janela, "abrir_url"):
+            endereco = navegador.endereco(alvo or navegador.INICIO, buscador)
+            if not self._janela.abrir_url(endereco):
+                return "Não consegui abrir o site no navegador padrão, senhor."
+            self._url_mini = endereco
+            self._aba_ativa = "navegador"
+            return "Abri o site no navegador padrão, senhor. A mini tela não está disponível nessa interface."
 
         def abrir():
             self._ui("atividade", "Abrindo na mini tela…")
@@ -1161,6 +1175,12 @@ class Jarvis:
     # ---------- interface ----------
     def _ui(self, funcao, *args):
         if not self._janela:
+            return
+        if hasattr(self._janela, "_dispatch_interface"):
+            try:
+                self._janela._dispatch_interface(funcao, args)
+            except RuntimeError:
+                log.debug("A interface foi fechada antes de receber %s", funcao)
             return
         argumentos = ", ".join(json.dumps(a) for a in args)
         try:
@@ -2287,24 +2307,8 @@ def main():
     enviar_email.preparar()
     # Bot do Telegram (só liga se houver token no .env)
     jarvis._bot = telegram_bot.iniciar(jarvis.responder, jarvis.status)
-    try:
-        interface = servidor.iniciar() + "/interface/index.html"
-    except Exception:
-        log.exception("Servidor local falhou; abrindo a interface direto do arquivo (YouTube nas abas não toca)")
-        interface = os.path.join(PASTA, "interface", "index.html")
-    janela = webview.create_window(
-        identidade.SIGLA,
-        interface,
-        js_api=jarvis,
-        maximized=True,
-        min_size=(900, 600),
-        background_color="#020a12",
-    )
-    jarvis._janela = janela
-    threading.Thread(target=_vigiar_abertura, args=(jarvis,), daemon=True).start()
-    threading.Thread(target=jarvis._vigiar_github, daemon=True).start()
-    threading.Thread(target=jarvis._vigiar_respostas, daemon=True).start()
-    webview.start()
+    import interface_qt
+    interface_qt.iniciar(jarvis, identidade.SIGLA)
 
 
 _trava_unica = None  # fica aberta enquanto o Jarvis roda
