@@ -1,0 +1,63 @@
+{
+ "data": "2026-10-24 11:37",
+ "resultados": [
+  {
+   "tipo": "captura",
+   "motor": "mss",
+   "tela": "1920x1200",
+   "ms_media": 83.5,
+   "ms_p95": 95.3,
+   "fotos_novas_de_40": 40,
+   "cpu_10fps_pct_do_pc": 3.51,
+   "quadros_novos_em_6s": 60,
+   "memoria_mb": 31.8,
+   "memoria_ao_criar_mb": 5.4
+  },
+  {
+   "tipo": "captura",
+   "motor": "dxcam",
+   "tela": "1920x1200",
+   "ms_media": 24.0,
+   "ms_p95": 22.3,
+   "fotos_novas_de_40": 35,
+   "cpu_10fps_pct_do_pc": 3.15,
+   "quadros_novos_em_6s": 60,
+   "memoria_mb": 64.4,
+   "memoria_ao_criar_mb": 38.7
+  },
+  {
+   "tipo": "ocr",
+   "motor": "windows",
+   "idiomas_do_windows": [
+    "pt-BR",
+    "pt-PT"
+   ],
+   "ms_primeira": 500,
+   "ms_teste": 241,
+   "acerto_pct": 96.4,
+   "acerto_sem_acento_pct": 99.1,
+   "acerto_ampliado_2x_pct": 96.8,
+   "acerto_ampliado_2x_sem_acento_pct": 99.1,
+   "ms_tela_inteira": 652,
+   "palavras_na_tela": 300,
+   "ms_quarto_da_tela": 155,
+   "memoria_mb": 31.5,
+   "exemplo_lido": "Arquivo Editar Exibir Inserir Formatar Ajuda Erro: não foi possível salvar o arquivo cadeira. blend Configurações de exibição • Resolução 1920 * 1200 Salvar com"
+  },
+  {
+   "tipo": "ocr",
+   "motor": "rapid",
+   "ms_primeira": 13550,
+   "ms_teste": 5582,
+   "acerto_pct": 56.3,
+   "acerto_sem_acento_pct": 77.5,
+   "acerto_ampliado_2x_pct": 61.7,
+   "acerto_ampliado_2x_sem_acento_pct": 85.1,
+   "ms_tela_inteira": 12494,
+   "palavras_na_tela": 143,
+   "ms_quarto_da_tela": 5249,
+   "memoria_mb": 27.6,
+   "exemplo_lido": "Arquivo Editar Exibir Inserir Formatar Ajuda Erro: nao foi possivel salvar o arquivo cadeira.blend Configurac0es de exibicao · Resolucao 1920 × 1200 Salvar como"
+  }
+ ]
+}
