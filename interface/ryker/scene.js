@@ -1,17 +1,27 @@
 // Quarto do Braga em 3D: o Ryker sentado no ThinkPad. A tela do ThinkPad espelha a tela REAL do PC (os quadros
 // chegam pelo main.js, do mini notebook do Braga) e cliques nela viram cliques no PC (só com os cliques LIGADOS).
-// Modelo feito no Blender (assets/jarvis_v5.glb). Ajustado para PC com pouca memória e vídeo Intel: pixel 1:1,
-// sombras calculadas uma vez só, tela do notebook em 1280x720 e no máximo 30 quadros por segundo.
+// Modelo feito no Blender (assets/jarvis_v5.glb).
+// Mãos de verdade: cinemática inversa (CCD) leva a mão direita ao mouse da mesa (que anda junto com o cursor do PC)
+// e os dedos às teclas quando alguém digita. Leve para PC com pouca memória e vídeo Intel: sombras calculadas uma
+// vez só, tela do notebook em 1280x720 sem mipmaps, até 30 quadros por segundo e resolução que se ajusta sozinha.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 const B = (x, y, z) => new THREE.Vector3(x, z, -y);   // coordenadas Blender (Z pra cima) -> three.js
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+
+// Onde ficam as coisas na mesa (espaço do mundo, medido no jarvis_v5.glb)
+const TECLADO = { L: [V(-1.125, .789, -1.088), V(-1.015, .789, -1.142)], R: [V(-0.985, .789, -1.088), V(-0.875, .789, -1.142)] };
+// Quanto o mouse anda no mousepad de um canto ao outro da tela (metros) e onde ele fica parado: um pouco mais perto
+// do Ryker que no modelo, senão o braço dele não alcança o canto de cima do mousepad.
+const MOUSE_CURSO = { x: .05, z: .038 }, MOUSE_PERTO = V(-.03, 0, .035);
 
 export function criarCena(canvas, aoCarregar) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(1);
+  let escala = 1;   // resolução de desenho: cai sozinha se o PC não aguentar 30 quadros por segundo
+  renderer.setPixelRatio(escala);
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.shadowMap.autoUpdate = false;   // a sala não se mexe: sombra calculada ao carregar
@@ -34,10 +44,12 @@ export function criarCena(canvas, aoCarregar) {
 
   const tela = criarTelaNotebook(renderer);
   // controle = cliques do senhor na tela 3D liberados; agente = o Braga está mexendo no PC sozinho
-  const estado = { nivel: 0, falando: false, gesto: 0, modo: 'live5d', cursor: null, acao: null, hover: null,
-    controle: false, agente: false, digitarAte: 0, mouseAte: 0, cliqueEm: 0 };
+  // cursorAlvo = onde está o mouse de verdade (o cursor 3D e o mouse da mesa vão até lá suavemente)
+  const estado = { nivel: 0, falando: false, gesto: 0, modo: 'live5d', cursor: null, cursorAlvo: null, acao: null, hover: null,
+    controle: false, agente: false, digitarAte: 0, mouseAte: 0, cliqueEm: 0, rolarAte: 0, fps: 0, escala: 1 };
   const R = { ossos: {}, rest: {}, morph: [] };
   let pronto = false, cam5Pos = new THREE.Vector3(-0.02, 1.62, 0.2), telaObj = null, telaC = new THREE.Vector3(), telaN = new THREE.Vector3(0, 0, 1), telaUp = new THREE.Vector3(0, 1, 0), webcamPos = B(-.76, 1.22, 1.12), cabecaPos = B(-1, .5, 1.3);
+  let mouseObj = null; const mouseRepouso = V(-0.67, .765, -.98);
 
   const grad = new THREE.DataTexture(new Uint8Array([90, 90, 90, 255, 175, 175, 175, 255, 255, 255, 255, 255]), 3, 1);
   grad.minFilter = grad.magFilter = THREE.NearestFilter; grad.needsUpdate = true;
@@ -58,7 +70,7 @@ export function criarCena(canvas, aoCarregar) {
         if (!/Olhos|Boca|Nariz|Brilho|Emblema/.test(o.name + m.name)) extras.push(o);
       }
       if (o.morphTargetDictionary) R.morph.push(o);
-      if (m && m.name === 'TelaAoVivo') { tela.textura.flipY = false; o.material = new THREE.MeshBasicMaterial({ map: tela.textura, toneMapped: false }); o.castShadow = false; o.receiveShadow = false; telaObj = o; }
+      if (m && m.name === 'TelaAoVivo') { o.material = new THREE.MeshBasicMaterial({ map: tela.textura, toneMapped: false }); tela.montarCamada(o); o.castShadow = false; o.receiveShadow = false; telaObj = o; }
       else if (m && m.name && m.name.startsWith('TP_') && m.isMeshStandardMaterial) m.envMapIntensity = .7;
       if (m && /Vidro|LuzTeto|LedBranco/.test(m.name)) o.castShadow = false;
     });
@@ -74,6 +86,12 @@ export function criarCena(canvas, aoCarregar) {
     const w = raiz.getObjectByName('WebcamOlho'); if (w) w.getWorldPosition(webcamPos);
     if (R.ossos.Head) { R.ossos.Head.getWorldPosition(cabecaPos); cabecaPos.y += .1; }
     const o5 = raiz.getObjectByName('Cam5DOlho'); if (o5) o5.getWorldPosition(cam5Pos);
+    mouseObj = raiz.getObjectByName('Mouse');
+    if (mouseObj) {
+      mouseObj.castShadow = false; mouseObj.userData.pos0 = mouseObj.position.clone();
+      new THREE.Box3().setFromObject(mouseObj).getCenter(mouseObj.userData.centro0 = V(0, 0, 0));
+      mouseRepouso.copy(mouseObj.userData.centro0).add(MOUSE_PERTO);
+    }
     if (telaObj) {
       const g = telaObj.geometry, P = g.attributes.position, T = g.attributes.uv, c = {};
       for (let i = 0; i < T.count; i++) c[Math.round(T.getX(i)) + '' + Math.round(T.getY(i))] = new THREE.Vector3().fromBufferAttribute(P, i).applyMatrix4(telaObj.matrixWorld);
@@ -92,6 +110,7 @@ export function criarCena(canvas, aoCarregar) {
   };
   const VISTAS = {
     live5d: () => ({ pos: cam5Pos.clone(), alvo: telaC.clone().add(new THREE.Vector3(.0, .07, .3)), fov: 41, auto: false }),     // Live: câmera 5D no tripé
+    maos:   () => ({ pos: V(-0.52, 1.28, -0.58), alvo: V(-0.86, .80, -1.06), fov: 46, auto: false }),   // mãos, teclado, mouse e tela
     medio:  () => ({ pos: cabecaPos.clone().add(new THREE.Vector3(.36, .1, .95)), alvo: telaC.clone().add(new THREE.Vector3(0, -.06, .25)), fov: 42, auto: false }), // Medium shot por trás
     close:  () => ({ pos: telaC.clone().addScaledVector(telaN, .62).addScaledVector(telaUp, .04).add(new THREE.Vector3(0, .16, 0)), alvo: telaC.clone().addScaledVector(telaUp, -.07), fov: 40, auto: false }), // tela + mãos
     ombro: ombro(1.0, .16, -.26, 26),     // por trás/por cima do ombro: tela grande e legível
@@ -117,72 +136,165 @@ export function criarCena(canvas, aoCarregar) {
     const o = R.ossos[nome]; if (!o) return;
     o.quaternion.copy(R.rest[nome]).multiply(Q.setFromEuler(E.set(x, y, z)));
   }
-  // dedos com ossos separados (Finger0..3): leve defasagem entre eles = movimento natural
-  function dedos(L, v, y = 0) { for (let f = 0; f < 4; f++) gira(`Finger${f}_${L}`, v * (1 + (f - 1.5) * .12), y); }
+  function dedo(L, f, v, y = 0) { gira(`Finger${f}_${L}`, v, y); }
+  // dedos com ossos separados (Finger0..3, 0 = indicador): leve defasagem entre eles = movimento natural
+  function dedos(L, v, y = 0) { for (let f = 0; f < 4; f++) dedo(L, f, v * (1 + (f - 1.5) * .12), y); }
   function morph(nome, v) { for (const m of R.morph) { const i = m.morphTargetDictionary[nome]; if (i !== undefined) m.morphTargetInfluences[i] = v; } }
 
-  let piscarAte = 0, proxPiscar = 2;
+  // ---------- cinemática inversa (CCD): gira antebraço e braço até o "efetor" (mão ou dedo) chegar no alvo ----------
+  const _P = V(0, 0, 0), _E = V(0, 0, 0), _a = V(0, 0, 0), _b = V(0, 0, 0), _eixo = V(0, 0, 0);
+  const _qW = new THREE.Quaternion(), _qB = new THREE.Quaternion(), _qP = new THREE.Quaternion();
+  const _base = [new THREE.Quaternion(), new THREE.Quaternion()], _ik = [new THREE.Quaternion(), new THREE.Quaternion()];
+  function maoAte(L, efetorNome, alvo, peso) {
+    const cadeia = [R.ossos['ForeArm_' + L], R.ossos['UpperArm_' + L]], efetor = R.ossos[efetorNome];
+    if (!cadeia[0] || !cadeia[1] || !efetor || peso < .002) return;
+    R.ossos.Hips.updateMatrixWorld(true);
+    cadeia.forEach((o, i) => _base[i].copy(o.quaternion));
+    for (let volta = 0; volta < 8; volta++) {
+      for (const osso of cadeia) {
+        osso.getWorldPosition(_P); efetor.getWorldPosition(_E);
+        _a.subVectors(_E, _P).normalize(); _b.subVectors(alvo, _P).normalize();
+        const ang = Math.acos(THREE.MathUtils.clamp(_a.dot(_b), -1, 1));
+        if (ang < 1e-3) continue;
+        _eixo.crossVectors(_a, _b); if (_eixo.lengthSq() < 1e-12) continue; _eixo.normalize();
+        _qW.setFromAxisAngle(_eixo, Math.min(ang, .2));
+        osso.getWorldQuaternion(_qB); osso.parent.getWorldQuaternion(_qP);
+        osso.quaternion.copy(_qP.invert().multiply(_qW.multiply(_qB)));
+        osso.updateMatrixWorld(true);
+      }
+    }
+    cadeia.forEach((o, i) => { _ik[i].copy(o.quaternion); o.quaternion.copy(_base[i]).slerp(_ik[i], peso); });
+    R.ossos.Hips.updateMatrixWorld(true);
+  }
+
+  // dedos pulando de tecla em tecla enquanto alguém digita
+  const digit = { L: { de: V(0, 0, 0), para: V(0, 0, 0), agora: V(0, 0, 0), t0: 0, dur: 1, dedo: 0, iniciado: false }, R: { de: V(0, 0, 0), para: V(0, 0, 0), agora: V(0, 0, 0), t0: 0, dur: 1, dedo: 1, iniciado: false } };
+  function alvoTecla(L, agora) {
+    const d = digit[L], [a, b] = TECLADO[L];
+    if (!d.iniciado) { d.para.lerpVectors(a, b, .5); d.agora.copy(d.para); d.iniciado = true; }
+    if (agora - d.t0 > d.dur) {   // próxima tecla
+      d.de.copy(d.agora); d.t0 = agora; d.dur = 120 + Math.random() * 110; d.dedo = Math.floor(Math.random() * 4);
+      d.para.set(a.x + (b.x - a.x) * Math.random(), a.y, a.z + (b.z - a.z) * Math.random());
+    }
+    const p = Math.min(1, (agora - d.t0) / d.dur), e = p * p * (3 - 2 * p);
+    d.agora.lerpVectors(d.de, d.para, e);
+    d.agora.y = a.y + Math.sin(Math.min(1, p / .8) * Math.PI) * .016;   // levanta o dedo entre as teclas
+    d.batendo = p > .78;
+    return d.agora;
+  }
+
+  let piscarAte = 0, proxPiscar = 2, pesoMouse = 0, pesoTecladoL = 0, pesoTecladoR = 0;
+  const alvoMao = V(0, 0, 0), posMouse = V(0, 0, 0);
   function animar(t, dt) {
-    const n = estado.nivel, f = estado.falando;
+    const n = estado.nivel, f = estado.falando, agora = performance.now();
     // piscar e boca valem em qualquer pose
     if (t > proxPiscar) { piscarAte = t + .13; proxPiscar = t + 2 + Math.random() * 3.5; }
     morph('Piscar', t < piscarAte ? 1 : 0);
     morph('Fala', Math.min(1, n * 1.2));
     estado.gesto += ((f ? 1 : 0) - estado.gesto) * Math.min(1, dt * 3); const g = estado.gesto;
-    // respiração
-    const resp = Math.sin(t * 1.7);
-    gira('Spine', resp * .012); gira('Chest', resp * .018 - g * .05, Math.sin(t * .9) * g * .06);
-    gira('Neck', .05 * (1 - g) + Math.sin(t * .6) * .02, -g * .1);
 
-    // mexendo no PC: a animação de uma ação (clique na tela 3D) ou o que está acontecendo de verdade
-    // (mouse andando, cliques e digitação, do senhor ou do Braga)
-    const agora = performance.now(), A = estado.acao;
+    // cursor: a ação animada manda; senão vai suave até o mouse de verdade
+    const A = estado.acao;
     let p = 0;
     if (A) {
       p = Math.min(1, (agora - A.t0) / A.dur); const e = p < .5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2;
       if (A.de && A.para) estado.cursor = [A.de[0] + (A.para[0] - A.de[0]) * e, A.de[1] + (A.para[1] - A.de[1]) * e];
+      if (p >= 1 && !A.feito) { A.feito = true; A.resolve(); }
+    } else if (estado.cursorAlvo) {
+      if (!estado.cursor) estado.cursor = estado.cursorAlvo.slice();
+      const k = Math.min(1, dt * 10);
+      estado.cursor = [estado.cursor[0] + (estado.cursorAlvo[0] - estado.cursor[0]) * k, estado.cursor[1] + (estado.cursorAlvo[1] - estado.cursor[1]) * k];
     }
     const digitando = A ? A.tipo === 'digitar' : agora < estado.digitarAte;
-    const noMouse = A ? A.tipo !== 'digitar' : (agora < estado.mouseAte && !digitando);
-    if (digitando || noMouse) {
-      const ux = (estado.cursor ? estado.cursor[0] : .5) - .5, vy = (estado.cursor ? estado.cursor[1] : .5) - .5;
-      gira('UpperArm_R', 0, 0, 0); gira('UpperArm_L', 0, 0, 0); gira('ForeArm_L', 0);
-      if (noMouse) { gira('ForeArm_R', -.05, ux * .25, 0); gira('Hand_R', -.05 + vy * .12, ux * .35); }
-      else { gira('ForeArm_R', 0); gira('Hand_R', 0); }
-      const clicando = A ? p > .85 : agora - estado.cliqueEm < 180;
-      dedos('R', digitando ? Math.max(0, Math.sin(t * 22)) * .4 : (clicando ? .45 : .1));
-      dedos('L', digitando ? Math.max(0, Math.sin(t * 22 + 1.5)) * .4 : 0);
-      gira('Head', .16 - g * .1, -ux * .15 - g * .2, 0);
-      if (A && p >= 1 && !A.feito) { A.feito = true; A.resolve(); }
-      return;
+    const noMouse = A ? A.tipo !== 'digitar' : (agora < estado.mouseAte || agora < estado.rolarAte);
+    const clicando = A ? p > .8 : agora - estado.cliqueEm < 200;
+    pesoMouse += ((noMouse && !digitando ? 1 : 0) - pesoMouse) * Math.min(1, dt * 6);
+    pesoTecladoL += ((digitando ? 1 : 0) - pesoTecladoL) * Math.min(1, dt * 8);
+    pesoTecladoR += ((digitando && pesoMouse < .5 ? 1 : 0) - pesoTecladoR) * Math.min(1, dt * 8);
+    const ux = (estado.cursor ? estado.cursor[0] : .5) - .5, vy = (estado.cursor ? estado.cursor[1] : .5) - .5;
+
+    // corpo: respira; inclina pra frente digitando e pro lado do mouse
+    const resp = Math.sin(t * 1.7), frente = Math.max(pesoMouse, pesoTecladoL) * .06;
+    gira('Spine', resp * .012 + frente);
+    gira('Chest', resp * .018 - g * .05 + frente * .5, Math.sin(t * .9) * g * .06 - pesoMouse * .07);
+    gira('Neck', .05 * (1 - g) + Math.sin(t * .6) * .02, -g * .1);
+    // cabeça: olha a tela (e acompanha o cursor); falando, olha pra câmera e acena
+    gira('Head', (1 - g) * .12 + g * (Math.sin(t * 4.2) * .05 + n * .06) - .04 - Math.max(pesoMouse, pesoTecladoL) * .18,
+      -g * .32 + Math.sin(t * .45) * .06 * (1 - pesoMouse) + g * Math.sin(t * 1.3) * .08 - ux * .18 * pesoMouse, g * Math.sin(t * 1.1) * .05);
+
+    // braços na pose de base (modelada digitando) ou gesticulando ao falar
+    const gs = Math.sin(t * 2.4), gs2 = Math.sin(t * 1.3 + 1), solto = 1 - Math.max(pesoMouse, pesoTecladoR);
+    gira('UpperArm_R', g * solto * (.12 + gs2 * .06), 0, -g * solto * (.25 + gs * .06));
+    gira('ForeArm_R', g * solto * (.42 + gs * .15), g * solto * .35);
+    gira('Hand_R', g * solto * gs * .3, g * solto * .6);
+    gira('UpperArm_L', g * (1 - pesoTecladoL) * .15 * Math.max(0, gs2), 0, 0); gira('ForeArm_L', g * (1 - pesoTecladoL) * .25 * Math.max(0, gs2));
+    gira('Hand_L', 0);
+
+    // mouse da mesa: anda junto com o cursor do PC (só quando a mão está nele)
+    if (mouseObj) {
+      posMouse.set(mouseRepouso.x + ux * 2 * MOUSE_CURSO.x * pesoMouse, mouseRepouso.y, mouseRepouso.z + vy * 2 * MOUSE_CURSO.z * pesoMouse);
+      if (agora < estado.rolarAte) posMouse.z += Math.sin(t * 18) * .002;
+      const local = mouseObj.parent.worldToLocal(posMouse.clone()).sub(mouseObj.parent.worldToLocal(mouseObj.userData.centro0.clone()));
+      mouseObj.position.copy(mouseObj.userData.pos0).add(local);
     }
-    // cabeça: olha a tela; falando, olha pra câmera e acena
-    gira('Head', (1 - g) * .12 + g * (Math.sin(t * 4.2) * .05 + n * .06) - .04, -g * .32 + Math.sin(t * .45) * .06 + g * Math.sin(t * 1.3) * .08, g * Math.sin(t * 1.1) * .05);
-    // parado: digita devagar (dedos e mãos), que para quando ele gesticula
-    for (const [L, ph] of [['L', 0], ['R', 1.7]]) {
-      const tp = Math.max(0, Math.sin(t * 9 + ph)) * Math.max(0, Math.sin(t * 1.3 + ph * 2)) * .6;
-      const k = L === 'R' ? 1 - g : 1 - g * .5;
-      dedos(L, tp * .35 * k);
-      gira('Hand_' + L, -tp * .08 * k);
+    // mão direita no mouse: palma em cima, dedos nos botões; o indicador aperta no clique
+    if (pesoMouse > .002) {
+      alvoMao.copy(posMouse).add(V(0, .03, .055 - (clicando ? 0 : 0)));
+      if (clicando) alvoMao.y -= .004;
+      maoAte('R', 'Hand_R', alvoMao, pesoMouse);
+      gira('Hand_R', -.1 * pesoMouse, .25 * pesoMouse, 0);
+      dedos('R', .35 * pesoMouse);
+      dedo('R', 0, (clicando ? .75 : .3) * pesoMouse + (agora < estado.rolarAte ? Math.max(0, Math.sin(t * 20)) * .4 : 0));
     }
-    // gestos ao falar: mão direita sobe e gesticula, esquerda acompanha de leve
-    const gs = Math.sin(t * 2.4), gs2 = Math.sin(t * 1.3 + 1);
-    gira('UpperArm_R', g * (.12 + gs2 * .06), 0, -g * (.25 + gs * .06));
-    gira('ForeArm_R', g * (.42 + gs * .15), g * .35);
-    gira('Hand_R', g * gs * .3, g * .6);
-    gira('UpperArm_L', g * .15 * Math.max(0, gs2), 0, 0); gira('ForeArm_L', g * .25 * Math.max(0, gs2));
+    // digitando: os dedos vão de tecla em tecla e batem
+    for (const [L, peso] of [['L', pesoTecladoL], ['R', pesoTecladoR]]) {
+      if (peso < .002) continue;
+      const alvo = alvoTecla(L, agora);
+      maoAte(L, `Finger1_${L}`, alvo, peso);
+      dedos(L, .25 * peso);
+      if (digit[L].batendo) dedo(L, digit[L].dedo, .75 * peso);
+    }
+    // parado: digita devagar com os dedos, que param quando ele gesticula
+    if (!digitando && pesoMouse < .5) {
+      for (const [L, ph] of [['L', 0], ['R', 1.7]]) {
+        const tp = Math.max(0, Math.sin(t * 9 + ph)) * Math.max(0, Math.sin(t * 1.3 + ph * 2)) * .6;
+        const k = L === 'R' ? 1 - g : 1 - g * .5;
+        dedos(L, tp * .35 * k);
+      }
+    }
   }
 
+  // ---------- desenho: até 30 por segundo, resolução que se ajusta ao PC ----------
+  // A resolução só fica menor se isso deixou o quarto mais rápido de verdade; se não ajudou (o gargalo é outro),
+  // volta para a anterior e para de tentar baixar. Assim a imagem não fica borrada à toa.
   const relogio = new THREE.Clock();
-  let ultimo = 0;
+  let ultimo = 0, contagem = 0, gastoJs = 0, inicioJanela = performance.now(), lentas = 0, rapidas = 0, tentativa = null, piso = .55;
+  const gl = renderer.getContext(), info = gl.getExtension('WEBGL_debug_renderer_info');
+  estado.placa = info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+  function mudarEscala(nova) { escala = estado.escala = +nova.toFixed(2); renderer.setPixelRatio(escala); renderer.setSize(innerWidth, innerHeight); }
+  function ajustarResolucao(fps) {
+    estado.fps = Math.round(fps);
+    if (tentativa) {   // a última redução ajudou?
+      if (fps < tentativa.fps * 1.15) { piso = tentativa.escala; mudarEscala(tentativa.escala); }
+      tentativa = null; lentas = rapidas = 0; return;
+    }
+    if (fps < 24) { lentas++; rapidas = 0; } else if (fps > 28) { rapidas++; lentas = 0; } else lentas = rapidas = 0;
+    if (lentas >= 2 && escala - .15 >= piso - 1e-6) { tentativa = { fps, escala }; mudarEscala(escala - .15); lentas = 0; }
+    else if (rapidas >= 5 && escala < 1) { mudarEscala(Math.min(1, escala + .15)); rapidas = 0; }
+  }
   (function loop(agora) {
     requestAnimationFrame(loop);
-    if (document.hidden || agora - ultimo < 32) return;   // até ~30 quadros por segundo; minimizado, nada
+    if (document.hidden || agora - ultimo < 28) return;   // ~30 quadros por segundo numa tela de 60 Hz; minimizado, nada
     ultimo = agora;
-    const dt = relogio.getDelta(), t = relogio.elapsedTime;
+    const t0 = performance.now(), dt = Math.min(.1, relogio.getDelta()), t = relogio.elapsedTime;
     if (pronto) animar(t, dt);
     tela.desenhar(t, estado);
     controls.update(); renderer.render(scene, camera);
+    gastoJs += performance.now() - t0; contagem++;
+    if (agora - inicioJanela > 2000) {
+      estado.msQuadro = +(gastoJs / contagem).toFixed(1);
+      ajustarResolucao(contagem * 1000 / (agora - inicioJanela)); contagem = 0; gastoJs = 0; inicioJanela = agora;
+    }
   })(0);
 
   // ---------- clique/hover/rodinha direto na tela 3D ----------
@@ -222,41 +334,67 @@ export function criarCena(canvas, aoCarregar) {
     }).then(() => { if (a.u !== undefined && a.tipo !== 'rolar') tela.clique(a.u, a.v); });
   }
   function fimAcao() { estado.acao = null; }
-  // o que está acontecendo de verdade no PC (vem do registro do mini notebook)
-  function evento(tipo) {
+  // o que está acontecendo de verdade no PC (vem do registro do mini notebook); ms = quanto tempo dura
+  function evento(tipo, ms) {
     const agora = performance.now();
-    if (tipo === 'digitar') estado.digitarAte = agora + 1200;
-    if (tipo === 'clicar') { estado.cliqueEm = agora; estado.mouseAte = agora + 1500; if (estado.cursor) tela.clique(...estado.cursor); }
-    if (tipo === 'mouse' || tipo === 'rolar') estado.mouseAte = agora + 1500;
+    if (tipo === 'digitar') estado.digitarAte = Math.max(estado.digitarAte, agora + (ms || 1200));
+    if (tipo === 'clicar') { estado.cliqueEm = agora; estado.mouseAte = agora + 2000; if (estado.cursor) tela.clique(...estado.cursor); }
+    if (tipo === 'mouse') estado.mouseAte = agora + 1800;
+    if (tipo === 'rolar') { estado.rolarAte = agora + 900; estado.mouseAte = agora + 2000; }
   }
-  return { estado, vista, animarAcao, fimAcao, evento, aoClicarTela: f => ouvintes.push(f), quadro: bmp => tela.frame(bmp), aviso: t => { tela.erro = t; } };
+  // foto do que a câmera vê agora (para conferir as animações sem precisar olhar a janela)
+  function foto() { renderer.render(scene, camera); return renderer.domElement.toDataURL('image/jpeg', .8); }
+  return { estado, vista, animarAcao, fimAcao, evento, foto, aoClicarTela: f => ouvintes.push(f), quadro: bmp => tela.frame(bmp), aviso: t => { tela.erro = t; } };
 }
 
+// A tela do ThinkPad tem duas camadas:
+// - fundo: o quadro da tela do PC (ImageBitmap) vai DIRETO para a placa de vídeo. Passar por um canvas 2D antes
+//   obrigava o navegador a ir e voltar da placa a cada quadro, e isso travava o quarto no vídeo Intel;
+// - marcas (cursor grande, anel, cliques, faixa de estado): um canvas pequeno e transparente por cima, só
+//   redesenhado quando alguma marca muda.
 function criarTelaNotebook(renderer) {
-  const W = 1280, H = 720;
+  const preparar = t => { t.flipY = false; t.colorSpace = THREE.SRGBColorSpace; t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; return t; };
+  const aguardo = document.createElement('canvas'); aguardo.width = 640; aguardo.height = 360;
+  const textura = preparar(new THREE.Texture(aguardo));
+  textura.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+  const W = 960, H = 540;
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
-  const c = cv.getContext('2d'); const textura = new THREE.CanvasTexture(cv);
-  textura.colorSpace = THREE.SRGBColorSpace; textura.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-  textura.minFilter = THREE.LinearMipmapLinearFilter; textura.generateMipmaps = true;
-  let quadro = null, cliques = [], ultimo = -1;
+  const c = cv.getContext('2d'), camada = preparar(new THREE.CanvasTexture(cv));
+  let anterior = null, temQuadro = false, erroDesenhado, cliques = [], ultimo = -1;
+  function desenharAguardo() {
+    const g = aguardo.getContext('2d');
+    g.fillStyle = '#0a1f5c'; g.fillRect(0, 0, 640, 360); g.fillStyle = '#fff'; g.textAlign = 'center';
+    g.font = 'bold 28px sans-serif'; g.fillText('Ligando a tela do seu PC...', 320, 175);
+    g.font = '17px sans-serif'; g.fillText(api.erro || 'mini notebook do Braga', 320, 208);
+    erroDesenhado = api.erro; textura.needsUpdate = true;
+  }
   const api = {
     textura, erro: null,
-    frame(bmp) { if (quadro && quadro.close) quadro.close(); quadro = bmp; api.erro = null; },
+    montarCamada(tela) {   // mesma malha da tela, logo à frente dela
+      const m = new THREE.Mesh(tela.geometry, new THREE.MeshBasicMaterial({ map: camada, transparent: true, depthWrite: false,
+        toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+      m.renderOrder = 2; tela.add(m);
+    },
+    frame(bmp) {
+      if (anterior) anterior.close();   // o de dois quadros atrás já foi enviado à placa: pode liberar
+      anterior = temQuadro ? textura.image : null;
+      textura.image = bmp; textura.needsUpdate = true; temQuadro = true; api.erro = null;
+    },
     clique(u, v) { cliques.push({ u, v, t: performance.now() }); },
     desenhar(t, e) {
-      const q = Math.floor(t * 15); if (q === ultimo) return; ultimo = q;   // 15 por segundo bastam
-      if (quadro) c.drawImage(quadro, 0, 0, W, H);
-      else {
-        c.fillStyle = '#0a1f5c'; c.fillRect(0, 0, W, H); c.fillStyle = '#fff'; c.font = 'bold 40px sans-serif'; c.textAlign = 'center';
-        c.fillText('Ligando a tela do seu PC...', W / 2, H / 2); c.font = '24px sans-serif'; c.fillText(api.erro || 'mini notebook do Braga', W / 2, H / 2 + 46); c.textAlign = 'left';
-      }
+      if (!temQuadro && erroDesenhado !== api.erro) desenharAguardo();
+      const q = Math.floor(t * 20); if (q === ultimo) return; ultimo = q;   // marcas: até 20 por segundo
+      const agora = performance.now(); cliques = cliques.filter(o => agora - o.t < 700);
+      const marca = `${e.cursor && e.cursor.map(v => v.toFixed(3))}|${e.hover}|${e.controle}|${e.agente}|${!!e.acao}|${cliques.length}`;
+      if (!cliques.length && marca === api.marca) return;   // nada mudou: nem redesenha nem reenvia
+      api.marca = marca;
+      c.clearRect(0, 0, W, H);
       const k = W / 1920;   // as marcas foram pensadas para 1920 de largura
       // hover do senhor: anel bem visível onde o clique vai cair
       if (e.hover) { const [x, y] = [e.hover[0] * W, e.hover[1] * H];
         c.lineWidth = 6 * k; c.strokeStyle = e.controle ? '#33ff77' : '#ffcc00'; c.beginPath(); c.arc(x, y, 34 * k, 0, 7); c.stroke();
         c.beginPath(); c.moveTo(x - 50 * k, y); c.lineTo(x - 20 * k, y); c.moveTo(x + 20 * k, y); c.lineTo(x + 50 * k, y); c.moveTo(x, y - 50 * k); c.lineTo(x, y - 20 * k); c.moveTo(x, y + 20 * k); c.lineTo(x, y + 50 * k); c.stroke(); }
       // ondas de clique
-      const agora = performance.now(); cliques = cliques.filter(o => agora - o.t < 700);
       for (const o of cliques) { const p = (agora - o.t) / 700; c.strokeStyle = `rgba(255,40,40,${1 - p})`; c.lineWidth = 10 * k; c.beginPath(); c.arc(o.u * W, o.v * H, (20 + p * 70) * k, 0, 7); c.stroke(); }
       // cursor 3D grande (posição real do mouse ou animação do Ryker)
       if (e.cursor) {
@@ -270,7 +408,7 @@ function criarTelaNotebook(renderer) {
       const [cor, texto] = e.agente ? ['rgba(0,160,70,.85)', '● BRAGA CONTROLANDO O PC'] : e.controle ? ['rgba(0,160,70,.85)', '● CLIQUES LIGADOS'] : ['rgba(170,0,0,.85)', '■ CLIQUES DESLIGADOS'];
       c.fillStyle = cor; c.fillRect(W - 560 * k, 40 * k, 456 * k, 52 * k);
       c.fillStyle = '#fff'; c.font = `bold ${30 * k}px sans-serif`; c.fillText(texto, W - 542 * k, 77 * k);
-      textura.needsUpdate = true;
+      camada.needsUpdate = true;
     },
   };
   return api;

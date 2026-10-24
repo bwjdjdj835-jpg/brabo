@@ -370,11 +370,6 @@ class Jarvis:
     def abrir_pip(self):
         """Abre (ou traz para a frente) a mini tela flutuante, no canto de baixo à direita."""
         import navegador
-        if hasattr(self._janela, "abrir_url"):
-            endereco = self._url_mini or navegador.INICIO
-            if self._janela.abrir_url(endereco):
-                return "Abri o site no navegador padrão, senhor. A mini tela não está disponível nessa interface."
-            return "Não consegui abrir o site no navegador padrão, senhor."
         if getattr(self, "_pip", None) is not None:
             try:
                 self._pip.restore()
@@ -463,8 +458,6 @@ class Jarvis:
 
     def abrir_notebook_flutuante(self):
         """Notebook flutuante: a tela real em miniatura, sempre por cima, com pausar/parar e o registro."""
-        if hasattr(self._janela, "abrir_url"):
-            return "O mini notebook ainda não está disponível na interface PyQt6, senhor."
         import notebook
         if getattr(self, "_nb", None) is not None:
             try:
@@ -504,13 +497,6 @@ class Jarvis:
     def _abrir_mini_tela(self, alvo, buscador="bing"):
         """Abre um site (ou uma busca, no Bing por padrão) no navegador do Jarvis e mostra a mini tela."""
         import navegador
-        if hasattr(self._janela, "abrir_url"):
-            endereco = navegador.endereco(alvo or navegador.INICIO, buscador)
-            if not self._janela.abrir_url(endereco):
-                return "Não consegui abrir o site no navegador padrão, senhor."
-            self._url_mini = endereco
-            self._aba_ativa = "navegador"
-            return "Abri o site no navegador padrão, senhor. A mini tela não está disponível nessa interface."
 
         def abrir():
             self._ui("atividade", "Abrindo na mini tela…")
@@ -1142,6 +1128,24 @@ class Jarvis:
     def erro_js(self, mensagem):
         log.warning("Erro na interface: %s", mensagem)
 
+    def desempenho_js(self, texto):
+        log.info("Quarto 3D: %s", texto)  # quadros por segundo e resolução, medidos no próprio PC
+
+    # Fotos do quarto 3D para conferir as animações: só quando existe %TEMP%\ryker_fotos\PEDIR (a janela do Braga
+    # fica fora das capturas de tela, então é o próprio quarto que se fotografa)
+    def fotos_pedidas(self):
+        pedido = os.path.join(os.environ.get("TEMP", PASTA), "ryker_fotos", "PEDIR")
+        if not os.path.exists(pedido):
+            return False
+        os.remove(pedido)
+        return True
+
+    def foto_js(self, nome, dados_url):
+        pasta = os.path.join(os.environ.get("TEMP", PASTA), "ryker_fotos")
+        nome = re.sub(r"[^\w-]", "", str(nome))[:40] or "foto"
+        with open(os.path.join(pasta, nome + ".jpg"), "wb") as arquivo:
+            arquivo.write(base64.b64decode(str(dados_url).split(",", 1)[-1]))
+
     def tela_cheia(self):
         self._janela.toggle_fullscreen()
 
@@ -1175,12 +1179,6 @@ class Jarvis:
     # ---------- interface ----------
     def _ui(self, funcao, *args):
         if not self._janela:
-            return
-        if hasattr(self._janela, "_dispatch_interface"):
-            try:
-                self._janela._dispatch_interface(funcao, args)
-            except RuntimeError:
-                log.debug("A interface foi fechada antes de receber %s", funcao)
             return
         argumentos = ", ".join(json.dumps(a) for a in args)
         try:
@@ -1557,7 +1555,7 @@ class Jarvis:
         """Toca o primeiro resultado do YouTube numa aba dentro do Jarvis (ou no navegador, se não der)."""
         import youtube
         try:
-            if not servidor.url_de(os.path.join(servidor.PASTA, "interface", "index.html")):
+            if not servidor.url_de(os.path.join(servidor.PASTA, "interface", "ryker", "index.html")):
                 raise RuntimeError("interface aberta sem o servidor local")
             id_video, titulo = youtube.buscar(busca)
         except Exception:
@@ -2307,21 +2305,14 @@ def main():
     enviar_email.preparar()
     # Bot do Telegram (só liga se houver token no .env)
     jarvis._bot = telegram_bot.iniciar(jarvis.responder, jarvis.status)
-    # Interface: "ryker" (padrão: o quarto 3D do Ryker, com a tela do PC no notebook dele), "classica" (o painel
-    # completo) ou "qt" (a janela PyQt6). Troca no .env: JARVIS_INTERFACE=classica
-    escolha = os.environ.get("JARVIS_INTERFACE", "ryker").strip().lower()
-    if escolha == "qt":
-        import interface_qt
-        interface_qt.iniciar(jarvis, identidade.SIGLA)
-        return
     import notebook
     notebook.atalho_parar(lambda: jarvis._ui("parado", "Ctrl+Alt+Q"))  # freio pelo teclado, em qualquer janela
-    pagina = "interface/index.html" if escolha == "classica" else "interface/ryker/index.html"
+    # a interface é o quarto 3D do Ryker, com a tela do PC no notebook dele
     try:
-        interface = servidor.iniciar() + "/" + pagina
+        interface = servidor.iniciar() + "/interface/ryker/index.html"
     except Exception:
-        log.exception("Servidor local falhou; abrindo a interface direto do arquivo (YouTube nas abas não toca)")
-        interface = os.path.join(PASTA, "interface", "index.html")
+        log.exception("Servidor local falhou; abrindo a interface direto do arquivo (sem a tela ao vivo)")
+        interface = os.path.join(PASTA, "interface", "ryker", "index.html")
     janela = webview.create_window(
         identidade.SIGLA,
         interface,

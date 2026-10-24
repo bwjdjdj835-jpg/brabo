@@ -145,6 +145,7 @@ def _cobrir(imagem, monitor, janelas):
 class CapturaTela:
     LARGURA = 1280        # largura do quadro mandado para a interface
     OCIOSO = 3.0          # sem ninguém olhando por 3 s, a captura contínua para (poupa o processador)
+    FPS = 10              # fotos por segundo da captura contínua
 
     def __init__(self):
         self._trava = threading.Lock()
@@ -190,11 +191,14 @@ class CapturaTela:
         try:
             with _mss() as sct:
                 while time.time() - self._pedido < self.OCIOSO:
-                    if time.time() - ajuste > 1:  # janelas novas do Braga (o flutuante) também saem da captura
-                        self._cobrir, ajuste = primeira_pessoa(True), time.time()
+                    inicio = time.time()
+                    if inicio - ajuste > 1:  # janelas novas do Braga (o flutuante) também saem da captura
+                        self._cobrir, ajuste = primeira_pessoa(True), inicio
                     self.monitor = dict(sct.monitors[1])
                     self._bruta = sct.grab(self.monitor)
                     self._numero_bruta += 1
+                    # no máximo FPS fotos por segundo: cada foto também usa a placa de vídeo, que o quarto 3D divide
+                    time.sleep(max(0.0, 1 / self.FPS - (time.time() - inicio)))
         finally:
             primeira_pessoa(False)  # notebook fechado: o Braga volta a ser janela normal e a aparecer nos prints
             self._cobrir = []

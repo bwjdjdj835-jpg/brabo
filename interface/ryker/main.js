@@ -10,7 +10,7 @@ let cena = { estado: {}, vista() {}, animarAcao: async () => {}, fimAcao() {}, e
 import('./scene.js').then(m => {
   cena = m.criarCena($('cena'), erro => {
     if (erro) $('carregando').textContent = 'Não consegui carregar o quarto 3D. O resto do Braga funciona normal.';
-    else $('carregando').hidden = true;
+    else { $('carregando').hidden = true; setTimeout(fotosDeTeste, 4000); }
   });
   cena.aoClicarTela(cliqueNaTela);
 }).catch(e => {
@@ -119,17 +119,18 @@ const funcoes = {
     $('tarefa-passo').textContent = '';
     if (!trabalhando) { fonte = 'pc'; numeroQuadro = ''; }
   },
-  abrirNotebook(f) { fonte = f || 'pc'; numeroQuadro = ''; navInfo = null; trocarVista('ombro'); },
+  abrirNotebook(f) { fonte = f || 'pc'; numeroQuadro = ''; navInfo = null; trocarVista('maos'); },   // mãos, mouse e tela
   abrirAba(titulo, url) { $('aba-titulo').textContent = titulo || ''; $('aba-frame').src = url; $('aba').hidden = false; },
   fecharAba() { $('aba').hidden = true; $('aba-frame').src = 'about:blank'; },
-  abrirNavegador() { toast('Abrindo a mini tela no painel completo…'); setTimeout(() => { location.href = '../index.html?abrir=navegador'; }, 400); },
+  abrirNavegador() { mostrarMiniTela(true); },
+  fecharNavegador() { mostrarMiniTela(false); },
   parado(motivo) { cena.fimAcao(); mostrarControle(false); toast('PARADO: ' + (motivo || 'emergência')); },
 };
 // o Braga chama várias funções do painel completo (biblioteca, skills...): aqui elas só são ignoradas
 window.jarvis = new Proxy(funcoes, { get: (alvo, nome) => alvo[nome] || (() => {}) });
 
 // ---------- vistas da câmera ----------
-const NOMES_VISTA = { live5d: 'LIVE · câmera 5D no tripé', medio: 'Medium shot', close: 'Close-up na tela', ombro: 'Por cima do ombro', tela: 'Tela de frente', live: 'Frente (mesa)', orbita: '360° órbita', quarto: 'Quarto', rosto: 'Close no rosto' };
+const NOMES_VISTA = { live5d: 'LIVE · câmera 5D no tripé', maos: 'Mãos no notebook e no mouse', medio: 'Medium shot', close: 'Close-up na tela', ombro: 'Por cima do ombro', tela: 'Tela de frente', live: 'Frente (mesa)', orbita: '360° órbita', quarto: 'Quarto', rosto: 'Close no rosto' };
 function trocarVista(v) {
   document.querySelectorAll('.vistas button').forEach(x => x.classList.toggle('on', x.dataset.v === v));
   cena.vista(v); $('vistaNome').textContent = NOMES_VISTA[v];
@@ -137,10 +138,19 @@ function trocarVista(v) {
 document.querySelectorAll('.vistas button').forEach(b => b.onclick = () => trocarVista(b.dataset.v));
 
 // ---------- tela do PC ao vivo na tela do ThinkPad ----------
-let nbInfo = null, navInfo = null, fonte = 'pc', numeroQuadro = '', buscando = false;
-const doNavegador = () => fonte === 'navegador' && trabalhando;   // tarefa no notebook virtual (navegador do Braga)
+let nbInfo = null, navInfo = null, fonte = 'pc', numeroQuadro = '', buscando = false, miniTela = false;
+// o notebook do Ryker mostra o navegador do Braga (mini tela, ou tarefa no notebook virtual) em vez da tela do PC
+const doNavegador = () => miniTela || (fonte === 'navegador' && trabalhando);
+function mostrarMiniTela(sim) {
+  miniTela = sim; numeroQuadro = ''; navInfo = null;
+  $('minitela').textContent = sim ? 'Tela: navegador' : 'Tela: PC';
+  if (sim) { try { api().navegador_acao('estado'); } catch (_) {}   // liga o navegador do Braga, se estiver desligado
+    trocarVista('tela'); toast('Mini tela do navegador no notebook do Ryker. Ligue os cliques para navegar nela.'); }
+  try { api().contexto_interface(sim ? 'navegador' : 'jarvis', ''); } catch (_) {}   // "pesquisa X", "volta"... valem para ela
+}
+let pausarEspelho = false;   // só para medir o quarto sem o espelho
 async function buscarQuadro() {
-  if (buscando || document.hidden || !api() || !api().notebook_info) return;
+  if (buscando || pausarEspelho || document.hidden || !api() || !api().notebook_info) return;
   buscando = true;
   try {
     if (!nbInfo) nbInfo = await api().notebook_info();
@@ -148,7 +158,7 @@ async function buscarQuadro() {
     const r = await fetch(`${info.quadro}?n=${numeroQuadro}&t=${Date.now()}`, { cache: 'no-store' });
     if (r.ok) {
       numeroQuadro = r.headers.get('X-Quadro') || '';
-      if (r.status === 200) cena.quadro(await createImageBitmap(await r.blob()));
+      if (r.status === 200) { cena.quadro(await createImageBitmap(await r.blob())); quadrosEspelho++; }
     } else cena.aviso('Captura da tela indisponível agora');
   } catch (_) {}
   buscando = false;
@@ -160,9 +170,9 @@ async function lerEstado() {
   if (document.hidden || !api() || !api().notebook_estado) return;
   let s; try { s = await api().notebook_estado(); } catch (_) { return; }
   const e = cena.estado;
-  if (s.cursor && !e.acao && !doNavegador()) {
-    if (cursorAntes && Math.abs(s.cursor[0] - cursorAntes[0]) + Math.abs(s.cursor[1] - cursorAntes[1]) > .004) cena.evento('mouse');
-    e.cursor = cursorAntes = s.cursor;
+  if (s.cursor && !doNavegador() && !testandoFotos) {
+    if (cursorAntes && Math.abs(s.cursor[0] - cursorAntes[0]) + Math.abs(s.cursor[1] - cursorAntes[1]) > .003) cena.evento('mouse');
+    e.cursorAlvo = cursorAntes = s.cursor;   // o Ryker leva o mouse da mesa até lá, suave
   }
   e.agente = !!s.controlando;
   document.body.classList.toggle('agente', e.agente);
@@ -172,7 +182,9 @@ async function lerEstado() {
   if (marca && marca !== acoesVistas) {
     for (const a of acoes) {
       if (a.hora + a.texto === acoesVistas) break;
-      if (/^(Digitou|Tecla|Senhor digitou|Senhor: tecla)/.test(a.texto)) cena.evento('digitar');
+      const digitado = /^(?:Digitou|Senhor digitou): (.*)$/.exec(a.texto);
+      if (digitado) cena.evento('digitar', Math.min(6000, 700 + digitado[1].length * 70));   // mais texto, mais tempo digitando
+      else if (/^(Tecla|Senhor: tecla)/.test(a.texto)) cena.evento('digitar', 600);
       else if (/^(Clique|Senhor: (clicar|duplo|direito|tocar))/.test(a.texto)) cena.evento('clicar');
       else if (/^Rolou/.test(a.texto)) cena.evento('rolar');
     }
@@ -240,7 +252,7 @@ addEventListener('keydown', ev => {
 function micEstado(ligado) { $('mic').textContent = ligado ? 'Microfone ativo' : 'Microfone pausado'; $('mic').classList.toggle('desligado', !ligado); }
 $('falar').onclick = () => { try { api().ouvir_agora(); } catch (_) {} };
 $('mic').onclick = async () => { try { micEstado(await api().alternar_microfone()); } catch (_) {} };
-$('classico').onclick = () => { location.href = '../index.html'; };
+$('minitela').onclick = () => mostrarMiniTela(!miniTela);
 $('aba-fechar').onclick = () => funcoes.fecharAba();
 
 // ---------- sistema: dados reais do notebook ----------
@@ -255,13 +267,60 @@ async function atualizarStatus() {
 
 // ---------- início ----------
 addEventListener('error', e => { try { api().erro_js(`Quarto 3D: ${e.message} (linha ${e.lineno})`); } catch (_) {} });
+// a cada minuto o registro do Braga (jarvis.log) recebe como o quarto está rodando neste PC
+let quadrosEspelho = 0, inicioEspelho = performance.now();
+function relatarDesempenho() {
+  const s = (performance.now() - inicioEspelho) / 1000, e = cena.estado;
+  if (!document.hidden && e.fps) {
+    try { api().desempenho_js(`${e.fps} quadros/s, ${e.msQuadro} ms de JS por quadro, resolução ${Math.round((e.escala || 1) * 100)}%, espelho ${(quadrosEspelho / s).toFixed(1)} quadros/s, vista ${e.modo}, placa: ${e.placa}`); } catch (_) {}
+  }
+  quadrosEspelho = 0; inicioEspelho = performance.now();
+}
+// uma vez, 45 s depois de abrir: o quarto fica 11 s sem o espelho, para saber quanto o espelho pesa neste PC
+async function medirSemEspelho() {
+  if (document.hidden) return;
+  const espera = ms => new Promise(r => setTimeout(r, ms)), amostras = [];
+  pausarEspelho = true; await espera(5000);   // a captura do Braga para sozinha depois de 3 s sem pedidos
+  for (let i = 0; i < 3; i++) { await espera(2050); amostras.push(cena.estado.fps); }
+  pausarEspelho = false;
+  try { api().desempenho_js(`sem o espelho: ${amostras.join(', ')} quadros/s`); } catch (_) {}
+}
 function iniciar() {
   if (iniciar.feito || !api() || !api().pronto) return;
   iniciar.feito = true;
   atualizarStatus(); setInterval(atualizarStatus, 2500);
-  setInterval(buscarQuadro, 140);
-  setInterval(lerEstado, 450);
+  setInterval(buscarQuadro, 80);
+  setInterval(lerEstado, 200);
+  setTimeout(relatarDesempenho, 20000); setInterval(relatarDesempenho, 60000);
+  setTimeout(medirSemEspelho, 45000);
   api().pronto();
 }
 addEventListener('pywebviewready', iniciar);
 iniciar();
+window.quarto = { get cena() { return cena; }, trocarVista };   // para testes pelo console
+
+// Fotos de conferência das mãos (só quando o Braga tem um pedido em %TEMP%\ryker_fotos\PEDIR)
+let testandoFotos = false;   // durante as fotos, o cursor de teste não é trocado pelo mouse de verdade
+async function fotosDeTeste() {
+  try { if (!api() || !(await api().fotos_pedidas())) return; } catch (_) { return; }
+  testandoFotos = true;
+  const e = cena.estado, espera = ms => new Promise(r => setTimeout(r, ms)), vistaAntes = e.modo;
+  const passos = [
+    ['01_maos_parado', 'maos', () => {}],
+    ['02_mouse_dir_cima', 'maos', () => { e.cursorAlvo = [.92, .12]; cena.evento('mouse'); }],
+    ['03_mouse_esq_baixo', 'maos', () => { e.cursorAlvo = [.08, .9]; cena.evento('mouse'); }],
+    ['04_clicando', 'maos', () => { e.cursorAlvo = [.5, .5]; cena.evento('clicar'); }],
+    ['05_digitando', 'maos', () => cena.evento('digitar', 4000)],
+    ['06_digitando_close', 'close', () => cena.evento('digitar', 4000)],
+    ['07_mouse_live5d', 'live5d', () => { e.cursorAlvo = [.85, .3]; cena.evento('mouse'); }],
+    ['08_digitando_live5d', 'live5d', () => cena.evento('digitar', 4000)],
+  ];
+  for (const [nome, vista, agir] of passos) {
+    e.digitarAte = e.mouseAte = 0;   // cada foto mostra só a sua ação
+    trocarVista(vista); agir(); await espera(nome === '04_clicando' ? 1300 : 1500);
+    if (nome === '04_clicando') { cena.evento('clicar'); await espera(110); }
+    try { await api().foto_js(nome, cena.foto()); } catch (_) {}
+  }
+  testandoFotos = false;
+  trocarVista(vistaAntes);
+}

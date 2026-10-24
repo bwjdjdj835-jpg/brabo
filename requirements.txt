@@ -10,4 +10,3 @@ imageio-ffmpeg>=0.5
 playwright>=1.45
 mss>=9.0
 pyautogui>=0.9
-PyQt6>=6.7
